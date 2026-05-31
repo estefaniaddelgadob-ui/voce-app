@@ -56,27 +56,30 @@ export default function MyPersonaPage() {
 
   useEffect(() => {
     async function load() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase
-        .from("persona_profile")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
-      if (data) {
-        setForm({
-          display_name: data.display_name ?? "",
-          bio: data.bio ?? "",
-          tone: (data.tone as Tone) ?? "professional",
-          communication_style: data.communication_style ?? "",
-          sample_captions: (data.sample_captions?.length >= 3
-            ? data.sample_captions.slice(0, 3)
-            : [...(data.sample_captions ?? []), "", "", ""].slice(0, 3)) as [string, string, string],
-        });
-        setFingerprint(data.style_fingerprint ?? "");
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data } = await supabase
+          .from("persona_profile")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
+        if (data) {
+          setForm({
+            display_name: data.display_name ?? "",
+            bio: data.bio ?? "",
+            tone: (data.tone as Tone) ?? "professional",
+            communication_style: data.communication_style ?? "",
+            sample_captions: (data.sample_captions?.length >= 3
+              ? data.sample_captions.slice(0, 3)
+              : [...(data.sample_captions ?? []), "", "", ""].slice(0, 3)) as [string, string, string],
+          });
+          setFingerprint(data.style_fingerprint ?? "");
+        }
+      } finally {
+        setLoading(false); // always unblock the UI
       }
-      setLoading(false);
     }
     load();
   }, []);

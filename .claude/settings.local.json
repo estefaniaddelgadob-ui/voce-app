@@ -20,7 +20,10 @@
       "Read(//opt/homebrew/bin/**)",
       "Read(//usr/local/bin/**)",
       "Bash(npm run *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(node -e \"const pkg = require\\('./node_modules/lucide-react/package.json'\\); console.log\\(pkg.version\\)\")",
+      "Bash(node -e \"const {Users} = require\\('./node_modules/lucide-react'\\); console.log\\(Users ? 'Users OK' : 'Users MISSING'\\)\")",
+      "Bash(pkill -f \"next dev\")"
     ]
   }
 }

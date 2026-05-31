@@ -47,18 +47,21 @@ export default function NewContentPage() {
 
   useEffect(() => {
     async function load() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase
-        .from("audiences")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-      const list = (data as Audience[]) ?? [];
-      setAudiences(list);
-      if (list.length > 0) setAudienceId(list[0].id);
-      setLoadingAudiences(false);
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data } = await supabase
+          .from("audiences")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+        const list = (data as Audience[]) ?? [];
+        setAudiences(list);
+        if (list.length > 0) setAudienceId(list[0].id);
+      } finally {
+        setLoadingAudiences(false); // always unblock the UI
+      }
     }
     load();
   }, []);
