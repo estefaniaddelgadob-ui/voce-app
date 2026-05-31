@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Mic, ImagePlus, ChevronDown, ChevronUp,
   Sparkles, Loader2, CheckCircle2, RefreshCw,
-  Clock, Lightbulb, AlertCircle,
+  Clock, Lightbulb, AlertCircle, ArrowRight,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
@@ -255,7 +255,7 @@ function VoiceNotesFeed({ notes }: { notes: ThoughtNote[] }) {
           href="/record"
           className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#7F77DD] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#6E66CC]"
         >
-          <Mic className="h-3.5 w-3.5" /> Add a voice note
+          Add a voice note <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>
 
