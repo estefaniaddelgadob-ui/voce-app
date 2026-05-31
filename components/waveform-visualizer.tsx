@@ -65,7 +65,7 @@ export function WaveformVisualizer({ stream, isRecording }: Props) {
     // Live recording — Web Audio API frequency visualization
     audioCtx = new AudioContext();
     analyser = audioCtx.createAnalyser();
-    analyser.fftSize = BAR_COUNT * 4;
+    analyser.fftSize = 256; // must be a power of 2; gives 128 frequency bins
     analyser.smoothingTimeConstant = 0.75;
     dataArray = new Uint8Array(analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
 

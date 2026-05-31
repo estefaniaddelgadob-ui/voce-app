@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Mic,
   UserCircle,
+  Users,
   FilePlus,
   Library,
   CalendarDays,
@@ -17,12 +18,13 @@ import { Separator } from "@/components/ui/separator";
 import { createClient } from "@/lib/supabase";
 
 const navItems = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Record", href: "/record", icon: Mic },
-  { label: "My Persona", href: "/my-persona", icon: UserCircle },
-  { label: "Content", href: "/content/new", icon: FilePlus },
-  { label: "Library", href: "/library", icon: Library },
-  { label: "Schedule", href: "/content/calendar", icon: CalendarDays },
+  { label: "Dashboard",   href: "/dashboard",       icon: LayoutDashboard },
+  { label: "Record",      href: "/record",           icon: Mic },
+  { label: "My Persona",  href: "/my-persona",       icon: UserCircle },
+  { label: "Audiences",   href: "/my-audiences",     icon: Users },
+  { label: "Content",     href: "/content/new",      icon: FilePlus },
+  { label: "Library",     href: "/library",          icon: Library },
+  { label: "Schedule",    href: "/content/calendar", icon: CalendarDays },
 ];
 
 function NavItem({
@@ -65,7 +67,7 @@ export function Sidebar() {
   const router = useRouter();
 
   const isActive = (href: string) => {
-    if (href === "/content/new") return pathname.startsWith("/content/new");
+    if (href === "/content/new") return pathname === "/content/new";
     if (href === "/content/calendar") return pathname.startsWith("/content/calendar");
     return pathname === href || pathname.startsWith(href + "/");
   };
@@ -85,8 +87,7 @@ export function Sidebar() {
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path
                 d="M8 2C5.79 2 4 3.79 4 6v4c0 2.21 1.79 4 4 4s4-1.79 4-4V6c0-2.21-1.79-4-4-4z"
-                fill="white"
-                fillOpacity="0.9"
+                fill="white" fillOpacity="0.9"
               />
               <path d="M2 8.5C2 8.5 2 11 4 12.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
               <path d="M14 8.5C14 8.5 14 11 12 12.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
@@ -120,12 +121,7 @@ export function Sidebar() {
       <nav className="px-3 py-4">
         <ul className="space-y-0.5">
           <li>
-            <NavItem
-              href="/settings"
-              icon={Settings}
-              label="Settings"
-              active={isActive("/settings")}
-            />
+            <NavItem href="/settings" icon={Settings} label="Settings" active={isActive("/settings")} />
           </li>
           <li>
             <button
