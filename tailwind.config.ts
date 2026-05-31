@@ -44,10 +44,11 @@ const config: Config = {
           foreground: "var(--popover-foreground)",
         },
         voce: {
-          purple: "#7F77DD",
-          teal: "#1D9E75",
-          bg: "#FAFAF8",
-          navy: "#0F172A",
+          // <alpha-value> lets Tailwind opacity modifiers work: bg-voce-purple/10, ring-voce-purple/20 etc.
+          purple: "rgb(127 119 221 / <alpha-value>)",
+          teal:   "rgb(29 158 117 / <alpha-value>)",
+          bg:     "#FAFAF8",
+          navy:   "#0F172A",
         },
       },
       borderRadius: {
