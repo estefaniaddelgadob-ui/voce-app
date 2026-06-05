@@ -3,42 +3,40 @@
 @tailwind utilities;
 
 @layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+  .text-balance { text-wrap: balance; }
+
+  /* iOS safe-area padding utilities */
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+  .pt-safe { padding-top: env(safe-area-inset-top); }
 }
 
 @layer base {
   :root {
-    --background: #FAFAF8;
-    --foreground: #0F172A;
-    --card: #FFFFFF;
-    --card-foreground: #0F172A;
-    --popover: #FFFFFF;
-    --popover-foreground: #0F172A;
-    --primary: #7F77DD;
-    --primary-foreground: #FFFFFF;
-    --secondary: #F1F0FD;
-    --secondary-foreground: #0F172A;
-    --muted: #F4F4F2;
-    --muted-foreground: #64748B;
-    --accent: #7F77DD;
-    --accent-foreground: #FFFFFF;
-    --destructive: #EF4444;
-    --destructive-foreground: #FFFFFF;
-    --border: #E2E2E0;
-    --input: #E2E2E0;
-    --ring: #7F77DD;
-    --radius: 0.625rem;
-    --voce-purple: #7F77DD;
-    --voce-teal: #1D9E75;
+    /* Core palette */
+    --background:            #FAFAF8;
+    --foreground:            #0F172A;
+    --card:                  #FFFFFF;
+    --card-foreground:       #0F172A;
+    --popover:               #FFFFFF;
+    --popover-foreground:    #0F172A;
+
+    /* Brand accent — indigo */
+    --primary:               #6366F1;
+    --primary-foreground:    #FFFFFF;
+    --secondary:             #EEF2FF;
+    --secondary-foreground:  #0F172A;
+    --muted:                 #F4F4F2;
+    --muted-foreground:      #64748B;
+    --accent:                #6366F1;
+    --accent-foreground:     #FFFFFF;
+    --destructive:           #EF4444;
+    --destructive-foreground:#FFFFFF;
+    --border:                #E2E2E0;
+    --input:                 #E2E2E0;
+    --ring:                  #6366F1;
+    --radius:                0.625rem;
   }
 
-  * {
-    @apply border-border;
-  }
-
-  body {
-    @apply bg-background text-foreground;
-  }
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; }
 }

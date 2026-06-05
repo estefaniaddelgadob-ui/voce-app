@@ -44,11 +44,12 @@ const config: Config = {
           foreground: "var(--popover-foreground)",
         },
         voce: {
-          // <alpha-value> lets Tailwind opacity modifiers work: bg-voce-purple/10, ring-voce-purple/20 etc.
-          purple: "rgb(127 119 221 / <alpha-value>)",
-          teal:   "rgb(29 158 117 / <alpha-value>)",
-          bg:     "#FAFAF8",
-          navy:   "#0F172A",
+          // <alpha-value> enables opacity modifiers: bg-voce-indigo/10, ring-voce-indigo/20 etc.
+          indigo:  "rgb(99 102 241 / <alpha-value>)",   // #6366F1 — brand accent
+          teal:    "rgb(29 158 117 / <alpha-value>)",   // #1D9E75 — secondary
+          purple:  "rgb(127 119 221 / <alpha-value>)",  // #7F77DD — legacy, kept for existing pages
+          bg:      "#FAFAF8",
+          navy:    "#0F172A",
         },
       },
       borderRadius: {
