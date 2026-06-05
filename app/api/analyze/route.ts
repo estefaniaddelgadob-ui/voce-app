@@ -19,27 +19,32 @@ export async function POST(request: NextRequest) {
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
+      system:
+        "You are analysing a voice note from a content creator. Extract: " +
+        "1. Key ideas (bullet points) " +
+        "2. Main themes (1-3 word labels) " +
+        "3. Emotional tone (e.g. reflective, energised, frustrated) " +
+        "4. Standout phrases that sound like them. " +
+        "Return as JSON only — no markdown, no explanation.",
       messages: [
         {
           role: "user",
-          content: `Analyze this voice note transcript. Return ONLY a valid JSON object — no markdown, no explanation.
-
-Schema:
+          content: `Analyse this voice note and return ONLY valid JSON matching this schema exactly:
 {
-  "title": "short title, 5 words max",
-  "keyIdeas": ["concise idea 1", "concise idea 2", "concise idea 3"],
+  "title": "5 words max capturing the main topic",
+  "ideas": ["key idea 1", "key idea 2", "key idea 3"],
   "themes": ["theme1", "theme2", "theme3"],
-  "tone": "one of: reflective | energetic | analytical | uncertain | confident | creative | frustrated | hopeful",
-  "summary": "1–2 sentence summary of the note"
+  "tone": "one word: reflective | energised | frustrated | confident | uncertain | creative | hopeful | analytical",
+  "phrases": ["standout phrase 1", "standout phrase 2"]
 }
 
-Transcript:
+Voice note:
 ${transcript}`,
         },
       ],
     });
 
-    const raw = message.content[0].type === "text" ? message.content[0].text : "";
+    const raw = message.content[0].type === "text" ? message.content[0].text : "{}";
     const analysis = JSON.parse(extractJSON(raw));
 
     return NextResponse.json(analysis);

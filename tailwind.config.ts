@@ -57,6 +57,24 @@ const config: Config = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      keyframes: {
+        "voce-wave": {
+          "0%, 100%": { height: "4px" },
+          "50%":       { height: "var(--wave-h, 24px)" },
+        },
+        "voce-ripple": {
+          "0%":   { transform: "scale(1)",   opacity: "0.4" },
+          "100%": { transform: "scale(1.8)", opacity: "0" },
+        },
+      },
+      animation: {
+        "wave-1": "voce-wave 0.9s ease-in-out infinite 0s",
+        "wave-2": "voce-wave 0.9s ease-in-out infinite 0.12s",
+        "wave-3": "voce-wave 0.9s ease-in-out infinite 0.24s",
+        "wave-4": "voce-wave 0.9s ease-in-out infinite 0.12s",
+        "wave-5": "voce-wave 0.9s ease-in-out infinite 0s",
+        "ripple": "voce-ripple 1.4s ease-out infinite",
+      },
     },
   },
   plugins: [],
