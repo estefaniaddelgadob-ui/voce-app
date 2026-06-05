@@ -1,14 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
 function extractJSON(text: string): string {
   const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   return match ? match[1] : text.trim();
 }
 
 export async function POST(request: NextRequest) {
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   try {
     const { transcript } = await request.json();
 
