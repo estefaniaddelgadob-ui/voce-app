@@ -1,35 +1,45 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 
+interface RefAccount { handle: string; whatLike: string; }
+
 export async function POST(request: NextRequest) {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   try {
-    const { displayName, bio, tone, communicationStyle, sampleCaptions } =
-      await request.json();
+    const {
+      instagramHandle, niche, audience,
+      transformationBefore, transformationAfter,
+      toneWords, toneDescription, beliefs,
+      recurringThemes, pushback, referenceAccounts,
+    } = await request.json();
 
-    const samples = (sampleCaptions as string[])
-      .filter(Boolean)
-      .map((c, i) => `[${i + 1}] ${c}`)
-      .join("\n\n");
+    const refs = (referenceAccounts as RefAccount[] ?? [])
+      .filter(r => r.handle?.trim())
+      .map(r => `  @${r.handle} — ${r.whatLike}`)
+      .join("\n");
 
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
+      model:      "claude-sonnet-4-6",
       max_tokens: 600,
       messages: [
         {
-          role: "user",
-          content: `You are a personal branding expert. A content creator has shared information about themselves. Write a 200-word Style Fingerprint — a precise briefing for an AI ghostwriter to sound authentically like them.
+          role:    "user",
+          content: `You are a personal branding expert. A content creator has shared detailed information about themselves. Write a 200-word Style Fingerprint — a precise briefing for an AI ghostwriter to sound authentically like them.
 
 CREATOR:
-Name: ${displayName || "Creator"}
-Bio: ${bio || "Not provided"}
-Desired tone: ${tone}
-How they communicate: ${communicationStyle || "Not provided"}
+Instagram: @${instagramHandle || ""}
+Niche: ${niche || "Not provided"}
+Audience: ${audience || "Not provided"}
+Before following them their audience feels: ${transformationBefore || "Not provided"}
+After following them their audience feels: ${transformationAfter || "Not provided"}
+Tone words: ${(toneWords as string[] ?? []).join(", ") || "Not provided"}
+In their own words, their tone is: ${toneDescription || "Not provided"}
+Core beliefs / POV: ${beliefs || "Not provided"}
+Recurring themes: ${recurringThemes || "Not provided"}
+Pushes back on: ${pushback || "Not provided"}
+${refs ? `Style reference accounts:\n${refs}` : ""}
 
-SAMPLE POSTS:
-${samples || "No samples provided"}
-
-Write the Style Fingerprint in second person (addressing the AI ghostwriter). Cover: sentence structure and length, vocabulary choices, use of questions/humor/metaphor/storytelling, emotional register, distinctive patterns or phrases, and what makes this voice instantly recognizable. Be specific — reference patterns you see in their samples. Return plain text only, no markdown.`,
+Write the Style Fingerprint in second person (addressing the AI ghostwriter). Cover: sentence structure and length, vocabulary choices, emotional register, topics they return to, the transformation arc they represent, what makes this voice instantly recognizable, and any distinctive stylistic patterns. Be specific. Return plain text only, no markdown.`,
         },
       ],
     });
