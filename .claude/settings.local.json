@@ -23,7 +23,24 @@
       "Bash(npm install *)",
       "Bash(node -e \"const pkg = require\\('./node_modules/lucide-react/package.json'\\); console.log\\(pkg.version\\)\")",
       "Bash(node -e \"const {Users} = require\\('./node_modules/lucide-react'\\); console.log\\(Users ? 'Users OK' : 'Users MISSING'\\)\")",
-      "Bash(pkill -f \"next dev\")"
+      "Bash(pkill -f \"next dev\")",
+      "Bash(NPM_CONFIG_CACHE=/tmp/npm-cache npx next build)",
+      "Bash(curl -s http://localhost:3002/dashboard)",
+      "Bash(curl -s http://localhost:3002/)",
+      "Bash(npx tsc *)",
+      "Bash(git *)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(curl -s http://localhost:3001/dashboard)",
+      "Bash(node *)",
+      "Bash(pkill -f \"next start\")",
+      "Bash(PORT=3099 npm run start)",
+      "Bash(curl -si http://localhost:3099/)",
+      "Bash(curl -s http://localhost:3099/dashboard)",
+      "Bash(curl -s http://localhost:3099/login)",
+      "Bash(curl -s http://localhost:3099/_next/static/chunks/app/login/page-3bc13e82455c3a5d.js)",
+      "Bash(curl -s http://localhost:3099/_next/static/chunks/app/layout-a51cb84e52bc68da.js)",
+      "Bash(curl -sv http://localhost:3099/dashboard)",
+      "Bash(curl -s http://localhost:3001/_next/static/chunks/app/\\\\\\(app\\\\\\)/layout-575a0cefabd60497.js)"
     ]
   }
 }
