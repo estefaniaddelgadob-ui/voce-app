@@ -35,6 +35,7 @@ interface PersonaProfile {
   recurring_themes: string | null;
   pushback: string | null;
   reference_accounts: RefAccount[] | null;
+  instagram_growth_handle: string | null;
 }
 
 interface ScoreStats {
@@ -148,6 +149,7 @@ interface FormState {
   recurring_themes:      string;
   pushback:              string;
   reference_accounts:    RefAccount[];
+  instagram_growth_handle: string;
 }
 
 function initForm(p: PersonaProfile | null): FormState {
@@ -164,6 +166,7 @@ function initForm(p: PersonaProfile | null): FormState {
     recurring_themes:      p?.recurring_themes  ?? "",
     pushback:              p?.pushback          ?? "",
     reference_accounts:    refs.length > 0 ? refs : [{ handle: "", whatLike: "" }],
+    instagram_growth_handle: p?.instagram_growth_handle ?? "",
   };
 }
 
@@ -240,10 +243,11 @@ function PersonaForm({ persona, onSaved }: {
 
       const { error: dbErr } = await supabase.from("persona_profile").upsert(
         {
-          user_id:               user.id,
-          display_name:          form.instagram_handle,
-          instagram_handle:      form.instagram_handle,
-          niche:                 form.niche,
+          user_id:                  user.id,
+          display_name:             form.instagram_handle,
+          instagram_handle:         form.instagram_handle,
+          instagram_growth_handle:  form.instagram_growth_handle,
+          niche:                    form.niche,
           audience:              form.audience,
           transformation_before: form.transformation_before,
           transformation_after:  form.transformation_after,
@@ -352,6 +356,45 @@ function PersonaForm({ persona, onSaved }: {
       {/* Expanded form body */}
       {open && (
         <div className="border-t border-[#E2E2E0] px-5 pb-6 pt-5 space-y-6">
+
+          {/* ── INSTAGRAM ACCOUNTS ── */}
+          <div>
+            <SectionHeading>Instagram Accounts</SectionHeading>
+            <div className="space-y-4">
+              <div>
+                <FieldLabel
+                  label="Your personal Instagram account"
+                  helper="We'll use this to learn from your existing content and style"
+                />
+                <div className="flex items-center rounded-lg border border-[#E2E2E0] bg-white transition focus-within:border-voce-indigo focus-within:ring-2 focus-within:ring-voce-indigo/20">
+                  <span className="px-3 text-sm text-[#94A3B8] select-none">@</span>
+                  <input
+                    type="text"
+                    value={form.instagram_handle}
+                    onChange={e => set("instagram_handle", e.target.value)}
+                    placeholder="yourusername"
+                    className="flex-1 rounded-r-lg bg-transparent py-2.5 pr-3 text-sm text-[#0F172A] placeholder:text-[#94A3B8] outline-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <FieldLabel
+                  label="Instagram account you want to grow"
+                  helper="This might be different from your personal account — e.g. a business account"
+                />
+                <div className="flex items-center rounded-lg border border-[#E2E2E0] bg-white transition focus-within:border-voce-indigo focus-within:ring-2 focus-within:ring-voce-indigo/20">
+                  <span className="px-3 text-sm text-[#94A3B8] select-none">@</span>
+                  <input
+                    type="text"
+                    value={form.instagram_growth_handle}
+                    onChange={e => set("instagram_growth_handle", e.target.value)}
+                    placeholder="growthaccount"
+                    className="flex-1 rounded-r-lg bg-transparent py-2.5 pr-3 text-sm text-[#0F172A] placeholder:text-[#94A3B8] outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* ── YOUR NICHE & AUDIENCE ── */}
           <div>
@@ -545,23 +588,6 @@ function PersonaForm({ persona, onSaved }: {
                 <Plus className="h-3.5 w-3.5" /> Add another account
               </button>
             )}
-          </div>
-
-          {/* ── INSTAGRAM HANDLE ── */}
-          <div className="border-t border-[#F4F4F2] pt-5">
-            <label className="mb-1.5 block text-sm font-medium text-[#0F172A]">
-              Your Instagram handle
-            </label>
-            <div className="flex items-center rounded-lg border border-[#E2E2E0] bg-white transition focus-within:border-voce-indigo focus-within:ring-2 focus-within:ring-voce-indigo/20">
-              <span className="px-3 text-sm text-[#94A3B8] select-none">@</span>
-              <input
-                type="text"
-                value={form.instagram_handle}
-                onChange={e => set("instagram_handle", e.target.value)}
-                placeholder="yourusername"
-                className="flex-1 rounded-r-lg bg-transparent py-2.5 pr-3 text-sm text-[#0F172A] placeholder:text-[#94A3B8] outline-none"
-              />
-            </div>
           </div>
 
           {/* ── Error ── */}

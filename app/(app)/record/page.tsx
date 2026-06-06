@@ -136,10 +136,22 @@ function ResultsCard({
 }: {
   result: NoteResult;
   saveState: SaveState;
-  onSave: () => void;
+  onSave: (themes: string[]) => void;
   onReset: () => void;
 }) {
+  const [themes,   setThemes]  = useState<string[]>(result.analysis.themes ?? []);
+  const [newTheme, setNewTheme] = useState("");
   const tc = toneColor(result.analysis.tone);
+
+  function removeTheme(t: string) {
+    setThemes(prev => prev.filter(x => x !== t));
+  }
+
+  function addTheme() {
+    const t = newTheme.trim();
+    if (t && !themes.includes(t)) setThemes(prev => [...prev, t]);
+    setNewTheme("");
+  }
 
   return (
     <div className="mt-6 space-y-5 rounded-2xl border border-[#E2E2E0] bg-white p-5">
@@ -179,20 +191,29 @@ function ResultsCard({
         </div>
       )}
 
-      {/* Themes */}
-      {result.analysis.themes?.length > 0 && (
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">Themes</p>
-          <div className="flex flex-wrap gap-2">
-            {result.analysis.themes.map((t, i) => (
-              <span key={i}
-                className="rounded-full bg-voce-indigo/10 px-3 py-1 text-xs font-medium text-voce-indigo">
-                {t}
-              </span>
-            ))}
-          </div>
+      {/* Themes — editable */}
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">Themes</p>
+        <div className="mb-2.5 flex flex-wrap gap-2">
+          {themes.map((t, i) => (
+            <span key={i}
+              className="flex items-center gap-1 rounded-full bg-voce-indigo/10 px-2.5 py-0.5 text-xs font-medium text-voce-indigo">
+              {t}
+              <button onClick={() => removeTheme(t)} className="ml-0.5 transition hover:opacity-60">
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
         </div>
-      )}
+        <input
+          type="text"
+          value={newTheme}
+          onChange={e => setNewTheme(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addTheme(); } }}
+          placeholder="+ Add a theme"
+          className="rounded-lg border border-[#E2E2E0] bg-white px-3 py-1.5 text-sm text-[#0F172A] placeholder:text-[#94A3B8] outline-none transition focus:border-voce-indigo focus:ring-2 focus:ring-voce-indigo/20"
+        />
+      </div>
 
       {/* Standout phrases */}
       {result.analysis.phrases?.length > 0 && (
@@ -213,11 +234,11 @@ function ResultsCard({
       <div className="flex gap-3 pt-1">
         {saveState === "saved" ? (
           <div className="flex items-center gap-2 text-sm font-semibold text-voce-teal">
-            <CheckCircle2 className="h-5 w-5" /> Note saved to your Persona ✓
+            <CheckCircle2 className="h-5 w-5" /> Note saved to your Library ✓
           </div>
         ) : (
           <button
-            onClick={onSave}
+            onClick={() => onSave(themes)}
             disabled={saveState === "saving"}
             className="flex min-h-[44px] items-center gap-2 rounded-xl bg-voce-indigo px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
           >
@@ -266,7 +287,8 @@ function errMsg(err: unknown): string {
 
 async function saveNote(
   result: NoteResult,
-  noteType: "voice" | "photo" | "text"
+  noteType: "voice" | "photo" | "text",
+  editedThemes?: string[]
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -277,7 +299,7 @@ async function saveNote(
     type:             noteType,
     title:            result.analysis.title,
     transcript:       result.transcript,
-    themes:           result.analysis.themes ?? [],
+    themes:           editedThemes ?? result.analysis.themes ?? [],
     raw_ideas:        JSON.stringify(result.analysis),  // stringify so TEXT/JSONB both work
     duration_seconds: result.durationSec ?? null,
     status:           "processed",
@@ -366,11 +388,11 @@ function VoiceTab() {
     }
   }, [elapsed]);
 
-  async function handleSave() {
+  async function handleSave(editedThemes: string[]) {
     if (!result) return;
     setSave("saving");
     try {
-      await saveNote(result, "voice");
+      await saveNote(result, "voice", editedThemes);
       setSave("saved");
     } catch (err) {
       setError(errMsg(err));
@@ -523,11 +545,11 @@ function PhotoTab() {
     }
   }
 
-  async function handleSave() {
+  async function handleSave(editedThemes: string[]) {
     if (!result) return;
     setSave("saving");
     try {
-      await saveNote(result, "photo");
+      await saveNote(result, "photo", editedThemes);
       setSave("saved");
     } catch (err) {
       setError(errMsg(err)); setSave("idle");
@@ -644,11 +666,11 @@ function ImportTab() {
     }
   }
 
-  async function handleSave() {
+  async function handleSave(editedThemes: string[]) {
     if (!result) return;
     setSave("saving");
     try {
-      await saveNote(result, mode === "text" ? "text" : "voice");
+      await saveNote(result, mode === "text" ? "text" : "voice", editedThemes);
       setSave("saved");
     } catch (err) {
       setError(errMsg(err)); setSave("idle");

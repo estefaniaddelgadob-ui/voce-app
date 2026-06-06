@@ -2,10 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import {
-  Mic, ImagePlus, AlignLeft, ChevronRight,
-  Loader2, Trash2, CheckCircle2,
-} from "lucide-react";
+import { Mic, ImagePlus, AlignLeft, ChevronRight, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -13,15 +10,7 @@ import { createClient } from "@/lib/supabase";
 interface ThoughtNote {
   id: string;
   type: string | null;
-  title: string | null;
-  transcript: string | null;
   duration_seconds: number | null;
-  themes: string[] | null;
-  tags: string[] | null;
-  raw_ideas: string | null;
-  user_summary: string | null;
-  status: string;
-  created_at: string;
 }
 
 interface PersonaProfile {
@@ -36,36 +25,7 @@ interface PersonaProfile {
   instagram_handle: string | null;
 }
 
-interface RawAnalysis {
-  ideas?: string[];
-  themes?: string[];
-  phrases?: string[];
-}
-
 // ── Helpers ────────────────────────────────────────────────────────────────────
-
-function parseRawIdeas(raw: string | null): RawAnalysis | null {
-  if (!raw) return null;
-  try { return JSON.parse(raw) as RawAnalysis; }
-  catch { return null; }
-}
-
-function fmtDate(iso: string) {
-  const d    = new Date(iso);
-  const now  = new Date();
-  const days = Math.floor((now.getTime() - d.getTime()) / 86_400_000);
-  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  if (days === 0) return `Today at ${time}`;
-  if (days === 1) return `Yesterday at ${time}`;
-  if (days < 7)  return `${days} days ago`;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function fmtDur(sec: number | null) {
-  if (!sec) return null;
-  const m = Math.floor(sec / 60), s = sec % 60;
-  return m > 0 ? `${m}m${s > 0 ? ` ${s}s` : ""}` : `${s}s`;
-}
 
 function calcPersonaScore(persona: PersonaProfile | null, notes: ThoughtNote[]): number {
   const n        = notes.length;
@@ -94,175 +54,6 @@ function statusLabel(s: number): string {
   return "Fully trained ✓";
 }
 
-const INPUT =
-  "w-full rounded-lg border border-[#E2E2E0] bg-white px-3 py-2.5 text-sm text-[#0F172A] placeholder:text-[#94A3B8] outline-none transition focus:border-voce-indigo focus:ring-2 focus:ring-voce-indigo/20";
-
-function noteIcon(type: string | null) {
-  if (type === "photo") return { Icon: ImagePlus, color: "#1D9E75", bg: "rgba(29,158,117,0.1)" };
-  if (type === "text")  return { Icon: AlignLeft,  color: "#6366F1", bg: "rgba(99,102,241,0.1)" };
-  return { Icon: Mic, color: "#6366F1", bg: "rgba(99,102,241,0.1)" };
-}
-
-// ── Note library card (same expandable pattern as persona page had) ─────────────
-
-function NoteLibraryCard({ note, onDelete }: {
-  note: ThoughtNote;
-  onDelete: (id: string) => void;
-}) {
-  const [expanded,  setExpanded]  = useState(false);
-  const [takeaways, setTakeaways] = useState(note.user_summary ?? "");
-  const [saving,    setSaving]    = useState(false);
-  const [saved,     setTakeSaved] = useState(false);
-
-  const parsed  = parseRawIdeas(note.raw_ideas);
-  const themes  = (note.themes ?? note.tags ?? []).slice(0, 3);
-  const preview = parsed?.ideas?.[0] ?? note.transcript?.slice(0, 90);
-  const dur     = fmtDur(note.duration_seconds);
-  const { Icon, color, bg } = noteIcon(note.type);
-
-  async function saveTakeaways() {
-    setSaving(true); setTakeSaved(false);
-    try {
-      const supabase = createClient();
-      await supabase.from("thought_notes").update({ user_summary: takeaways }).eq("id", note.id);
-      setTakeSaved(true);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDelete() {
-    if (!confirm("Delete this note? This cannot be undone.")) return;
-    const supabase = createClient();
-    await supabase.from("thought_notes").delete().eq("id", note.id);
-    onDelete(note.id);
-  }
-
-  return (
-    <div className="rounded-xl border border-[#E2E2E0] bg-white overflow-hidden">
-      <button
-        onClick={() => setExpanded(v => !v)}
-        className="flex w-full items-start gap-3 p-4 text-left transition hover:bg-[#FAFAF8]"
-      >
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-          style={{ backgroundColor: bg }}>
-          <Icon className="h-4 w-4" style={{ color }} />
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <p className="text-xs text-[#94A3B8]">
-            {fmtDate(note.created_at)}{dur ? ` · ${dur}` : ""}
-          </p>
-          {preview && (
-            <p className="mt-0.5 line-clamp-2 text-sm text-[#0F172A]">{preview}</p>
-          )}
-          {themes.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {themes.map(t => (
-                <span key={t}
-                  className="rounded-full bg-[#F4F4F2] px-2 py-0.5 text-[10px] font-medium text-[#64748B]">
-                  {t}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="shrink-0 text-[#94A3B8] transition-transform duration-200"
-          style={{ transform: expanded ? "rotate(90deg)" : "none" }}>
-          <ChevronRight className="h-4 w-4" />
-        </div>
-      </button>
-
-      {expanded && (
-        <div className="border-t border-[#E2E2E0] px-4 pb-5 pt-4 space-y-4">
-          {note.transcript && (
-            <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">Transcript</p>
-              <p className="rounded-lg bg-[#F4F4F2] px-4 py-3 text-sm leading-relaxed text-[#0F172A]">
-                {note.transcript}
-              </p>
-            </div>
-          )}
-
-          {parsed?.ideas && parsed.ideas.length > 0 && (
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">Key Ideas</p>
-              <ul className="space-y-1.5">
-                {parsed.ideas.map((idea, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-[#0F172A]">
-                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-voce-indigo" />
-                    {idea}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {(note.themes ?? note.tags ?? []).length > 0 && (
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">Themes</p>
-              <div className="flex flex-wrap gap-1.5">
-                {(note.themes ?? note.tags ?? []).map(t => (
-                  <span key={t}
-                    className="rounded-full bg-voce-indigo/10 px-2.5 py-0.5 text-xs font-medium text-voce-indigo">
-                    {t}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {parsed?.phrases && parsed.phrases.length > 0 && (
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">Standout Phrases</p>
-              <div className="space-y-1.5">
-                {parsed.phrases.map((p, i) => (
-                  <p key={i} className="border-l-2 border-voce-indigo/40 pl-3 text-sm italic text-[#64748B]">
-                    &ldquo;{p}&rdquo;
-                  </p>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">
-              Key takeaways <span className="normal-case font-normal">(your own summary)</span>
-            </label>
-            <textarea
-              value={takeaways}
-              onChange={e => { setTakeaways(e.target.value); setTakeSaved(false); }}
-              rows={3}
-              placeholder="Add your own notes or key takeaways from this recording…"
-              className={INPUT}
-            />
-            {takeaways !== (note.user_summary ?? "") && (
-              <button
-                onClick={saveTakeaways}
-                disabled={saving}
-                className="mt-2 flex items-center gap-1.5 rounded-lg bg-voce-indigo px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-60"
-              >
-                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
-                {saving ? "Saving…" : saved ? "Saved" : "Save takeaways"}
-              </button>
-            )}
-          </div>
-
-          <div className="border-t border-[#F4F4F2] pt-1">
-            <button
-              onClick={handleDelete}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-red-500 transition hover:bg-red-50"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Delete this note
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -280,8 +71,10 @@ export default function DashboardPage() {
 
         const [pRes, nRes, cRes] = await Promise.all([
           supabase.from("persona_profile").select("*").eq("user_id", user.id).single(),
-          supabase.from("thought_notes").select("*").eq("user_id", user.id)
-            .neq("status", "archived").order("created_at", { ascending: false }),
+          supabase.from("thought_notes")
+            .select("id, type, duration_seconds")
+            .eq("user_id", user.id)
+            .neq("status", "archived"),
           supabase.from("content_drafts").select("status").eq("user_id", user.id),
         ]);
 
@@ -301,12 +94,12 @@ export default function DashboardPage() {
     fetchData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleDeleteNote(id: string) {
-    setNotes(prev => prev.filter(n => n.id !== id));
-  }
-
   const score  = calcPersonaScore(persona, notes);
   const status = statusLabel(score);
+
+  const voiceCount  = notes.filter(n => n.type === "voice").length;
+  const photoCount  = notes.filter(n => n.type === "photo").length;
+  const importCount = notes.filter(n => n.type === "text").length;
 
   if (loading) {
     return (
@@ -323,9 +116,9 @@ export default function DashboardPage() {
         <p className="mt-1 text-sm text-[#64748B]">Your personal voice dashboard.</p>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4">
 
-        {/* ── Section 1: Persona Strength Summary ── */}
+        {/* ── Section 1: Persona Strength ── */}
         <Link href="/my-persona"
           className="block rounded-xl border border-[#E2E2E0] bg-white p-5 transition hover:border-voce-indigo/40 hover:shadow-sm">
           <div className="mb-3 flex items-center justify-between">
@@ -344,37 +137,7 @@ export default function DashboardPage() {
           </div>
         </Link>
 
-        {/* ── Section 2: What Voce knows about you ── */}
-        <div className="rounded-xl border border-[#E2E2E0] bg-white p-6">
-          <h2 className="mb-1 text-base font-semibold text-[#0F172A]">What Voce knows about you</h2>
-          <p className="mb-5 text-sm text-[#64748B]">
-            Every input you add helps the AI learn your voice, ideas, and perspective.
-          </p>
-
-          {notes.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-[#E2E2E0] py-12 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#F4F4F2]">
-                <Mic className="h-6 w-6 text-[#94A3B8]" />
-              </div>
-              <p className="mt-3 text-sm font-medium text-[#0F172A]">Nothing here yet</p>
-              <p className="mt-1 text-xs text-[#94A3B8]">
-                Go to Record to add your first input
-              </p>
-              <Link href="/record"
-                className="mt-4 flex min-h-[44px] items-center gap-2 rounded-xl bg-voce-indigo px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90">
-                Go to Record
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {notes.map(n => (
-                <NoteLibraryCard key={n.id} note={n} onDelete={handleDeleteNote} />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── Section 3: Content Stats ── */}
+        {/* ── Section 2: Content Stats ── */}
         <Link href="/content"
           className="block rounded-xl border border-[#E2E2E0] bg-white p-5 transition hover:border-voce-indigo/40 hover:shadow-sm">
           <div className="mb-4 flex items-center justify-between">
@@ -393,6 +156,35 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+        </Link>
+
+        {/* ── Section 3: What Voce knows ── */}
+        <Link href="/library"
+          className="block rounded-xl border border-[#E2E2E0] bg-white p-5 transition hover:border-voce-indigo/40 hover:shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-[#0F172A]">What Voce knows about you</h2>
+            <span className="text-sm font-medium text-voce-indigo">View all →</span>
+          </div>
+          {notes.length === 0 ? (
+            <p className="text-sm text-[#94A3B8]">
+              Nothing yet — go to Record to add your first input.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-5 text-sm text-[#64748B]">
+              <span className="flex items-center gap-1.5">
+                <Mic       className="h-4 w-4 text-voce-indigo" />
+                {voiceCount} voice notes
+              </span>
+              <span className="flex items-center gap-1.5">
+                <ImagePlus className="h-4 w-4 text-voce-teal" />
+                {photoCount} photos
+              </span>
+              <span className="flex items-center gap-1.5">
+                <AlignLeft className="h-4 w-4 text-[#94A3B8]" />
+                {importCount} imports
+              </span>
+            </div>
+          )}
         </Link>
 
       </div>
