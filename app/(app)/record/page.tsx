@@ -272,17 +272,21 @@ async function saveNote(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const { error } = await supabase.from("thought_notes").insert({
+  const response = await supabase.from("thought_notes").insert({
     user_id:          user.id,
-    type:             noteType,                      // column is `type`, not `note_type`
+    type:             noteType,
     title:            result.analysis.title,
     transcript:       result.transcript,
-    themes:           result.analysis.themes ?? [],  // column is `themes`, not `tags`
-    raw_ideas:        result.analysis,
+    themes:           result.analysis.themes ?? [],
+    raw_ideas:        JSON.stringify(result.analysis),  // stringify so TEXT/JSONB both work
     duration_seconds: result.durationSec ?? null,
     status:           "processed",
-  });
-  if (error) throw error;
+  }).select();
+
+  // Always log so errors are visible in the browser console
+  console.log("[saveNote] Supabase response:", JSON.stringify(response, null, 2));
+
+  if (response.error) throw response.error;
 }
 
 // ── VOICE TAB ─────────────────────────────────────────────────────────────────

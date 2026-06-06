@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase";
 
 type ContentType    = "instagram_caption" | "carousel_script" | "reel_script" | "story_sequence" | "linkedin_post";
 type ToneOverride   = "persona" | "casual" | "bold" | "vulnerable" | "educational";
-type VariationCount = 1 | 2 | 3 | 4 | 5;
+type VariationCount = number;
 type Thumbs         = "up" | "down" | null;
 
 interface ContentVariation {
@@ -177,7 +177,7 @@ export default function ContentPage() {
   // Step 2
   const [contentType,      setContentType]      = useState<ContentType>("instagram_caption");
   const [topic,            setTopic]            = useState("");
-  const [variations,       setVariations]       = useState<VariationCount>(1);
+  const [variations,       setVariations]       = useState<VariationCount>(3);
   const [toneOverride,     setToneOverride]     = useState<ToneOverride>("persona");
   const [outputLang,       setOutputLang]       = useState("English");
 
@@ -419,23 +419,28 @@ export default function ContentPage() {
               className={inputCls} />
           </div>
 
-          {/* Variations — large square number buttons 1-5 */}
+          {/* Variations — 1-30 range slider */}
           <div>
-            <label className="mb-2 block text-sm font-medium text-[#0F172A]">
-              Number of variations
-            </label>
-            <div className="flex gap-2">
-              {([1, 2, 3, 4, 5] as VariationCount[]).map(n => (
-                <button key={n} type="button" onClick={() => setVariations(n)}
-                  className={[
-                    "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border text-base font-bold transition",
-                    variations === n
-                      ? "border-voce-indigo bg-voce-indigo text-white shadow-sm"
-                      : "border-[#E2E2E0] text-[#64748B] hover:border-voce-indigo/50 hover:text-voce-indigo",
-                  ].join(" ")}>
-                  {n}
-                </button>
-              ))}
+            <div className="mb-3 flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-voce-indigo tabular-nums">
+                {variations}
+              </span>
+              <span className="text-sm font-medium text-[#64748B]">
+                {variations === 1 ? "variation" : "variations"}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={30}
+              value={variations}
+              onChange={e => setVariations(Number(e.target.value))}
+              className="w-full cursor-pointer accent-[#6366F1]"
+              style={{ accentColor: "#6366F1" }}
+            />
+            <div className="mt-1 flex justify-between text-[10px] text-[#94A3B8]">
+              <span>1</span>
+              <span>30</span>
             </div>
           </div>
 
