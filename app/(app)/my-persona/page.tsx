@@ -197,7 +197,7 @@ function PersonaForm({ persona, onSaved }: {
   const [form, setForm]    = useState<FormState>(() => ({
     instagram_handle:   persona?.display_name        ?? "",
     bio:                persona?.bio                 ?? "",
-    tones:              parseTones(persona?.tone),
+    tones:              parseTones(persona?.tone ?? null),
     communication_style: persona?.communication_style ?? "",
     sample_captions:    initCaptions(persona),
     input_language:     persona?.input_language      ?? "English",
