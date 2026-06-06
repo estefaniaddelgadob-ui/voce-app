@@ -363,8 +363,8 @@ function PersonaForm({ persona, onSaved }: {
             <div className="space-y-4">
               <div>
                 <FieldLabel
-                  label="Your personal Instagram account"
-                  helper="We'll use this to learn from your existing content and style"
+                  label="Your personal Instagram"
+                  helper="We'll learn from your existing posts and captions to understand how you naturally write, your vocabulary, topics you return to, and your energy."
                 />
                 <div className="flex items-center rounded-lg border border-[#E2E2E0] bg-white transition focus-within:border-voce-indigo focus-within:ring-2 focus-within:ring-voce-indigo/20">
                   <span className="px-3 text-sm text-[#94A3B8] select-none">@</span>
@@ -372,7 +372,7 @@ function PersonaForm({ persona, onSaved }: {
                     type="text"
                     value={form.instagram_handle}
                     onChange={e => set("instagram_handle", e.target.value)}
-                    placeholder="yourusername"
+                    placeholder="yourhandle"
                     className="flex-1 rounded-r-lg bg-transparent py-2.5 pr-3 text-sm text-[#0F172A] placeholder:text-[#94A3B8] outline-none"
                   />
                 </div>
@@ -380,7 +380,7 @@ function PersonaForm({ persona, onSaved }: {
               <div>
                 <FieldLabel
                   label="Instagram account you want to grow"
-                  helper="This might be different from your personal account — e.g. a business account"
+                  helper="This is where Voce will help you publish content. Can be the same as your personal account or a separate business/creator account."
                 />
                 <div className="flex items-center rounded-lg border border-[#E2E2E0] bg-white transition focus-within:border-voce-indigo focus-within:ring-2 focus-within:ring-voce-indigo/20">
                   <span className="px-3 text-sm text-[#94A3B8] select-none">@</span>
@@ -388,12 +388,23 @@ function PersonaForm({ persona, onSaved }: {
                     type="text"
                     value={form.instagram_growth_handle}
                     onChange={e => set("instagram_growth_handle", e.target.value)}
-                    placeholder="growthaccount"
+                    placeholder="yourbrandhandle"
                     className="flex-1 rounded-r-lg bg-transparent py-2.5 pr-3 text-sm text-[#0F172A] placeholder:text-[#94A3B8] outline-none"
                   />
                 </div>
               </div>
             </div>
+
+            {/* Connection status banner — shows once at least one handle is saved */}
+            {(persona?.instagram_handle?.trim() || persona?.instagram_growth_handle?.trim()) && (
+              <div className="mt-4 rounded-xl bg-voce-indigo/8 px-4 py-3">
+                <p className="text-xs leading-relaxed text-voce-indigo">
+                  ✦ We&apos;ll start learning from your Instagram once your account is connected.
+                  For now, keep feeding Voce with voice notes, photos and imports — every input
+                  makes your persona stronger.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* ── YOUR NICHE & AUDIENCE ── */}
