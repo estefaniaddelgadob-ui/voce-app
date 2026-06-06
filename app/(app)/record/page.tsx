@@ -250,6 +250,20 @@ async function analyzeTranscript(transcript: string): Promise<Analysis> {
   return data as Analysis;
 }
 
+// Extracts a readable message from any thrown value — including Supabase
+// PostgrestError, which is a plain object (not an Error instance).
+function errMsg(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null) {
+    const e = err as Record<string, unknown>;
+    if (typeof e.message === "string") return e.message;
+    if (typeof e.details === "string") return e.details;
+    if (typeof e.code   === "string") return `DB error ${e.code}`;
+    return JSON.stringify(e);
+  }
+  return String(err);
+}
+
 async function saveNote(
   result: NoteResult,
   noteType: "voice" | "photo" | "text"
@@ -260,10 +274,10 @@ async function saveNote(
 
   const { error } = await supabase.from("thought_notes").insert({
     user_id:          user.id,
-    note_type:        noteType,
+    type:             noteType,                      // column is `type`, not `note_type`
     title:            result.analysis.title,
     transcript:       result.transcript,
-    tags:             result.analysis.themes ?? [],
+    themes:           result.analysis.themes ?? [],  // column is `themes`, not `tags`
     raw_ideas:        result.analysis,
     duration_seconds: result.durationSec ?? null,
     status:           "processed",
@@ -355,7 +369,7 @@ function VoiceTab() {
       await saveNote(result, "voice");
       setSave("saved");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(errMsg(err));
       setSave("idle");
     }
   }
@@ -512,7 +526,7 @@ function PhotoTab() {
       await saveNote(result, "photo");
       setSave("saved");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed."); setSave("idle");
+      setError(errMsg(err)); setSave("idle");
     }
   }
 
@@ -633,7 +647,7 @@ function ImportTab() {
       await saveNote(result, mode === "text" ? "text" : "voice");
       setSave("saved");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed."); setSave("idle");
+      setError(errMsg(err)); setSave("idle");
     }
   }
 

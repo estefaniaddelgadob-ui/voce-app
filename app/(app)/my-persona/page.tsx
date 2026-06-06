@@ -17,7 +17,8 @@ interface ThoughtNote {
   transcript: string | null;
   audio_url: string | null;
   duration_seconds: number | null;
-  tags: string[] | null;
+  themes: string[] | null;  // current column name
+  tags:   string[] | null;  // legacy column — kept for backward compat with old notes
   status: string;
   created_at: string;
 }
@@ -227,7 +228,7 @@ function NoteCard({ note }: { note: ThoughtNote }) {
   const isVoice = !!note.audio_url || !!note.duration_seconds;
   const dur     = fmtDur(note.duration_seconds);
   const title   = note.title || (note.transcript ? `${note.transcript.slice(0, 60)}…` : "Untitled note");
-  const tags    = (note.tags ?? []).slice(0, 4);
+  const tags    = (note.themes ?? note.tags ?? []).slice(0, 4);
 
   return (
     <div className="flex items-start gap-3 rounded-xl border border-[#E2E2E0] bg-white p-4">
