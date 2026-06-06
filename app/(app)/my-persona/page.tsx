@@ -3,9 +3,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import {
-  Mic, ImagePlus, AlignLeft, ChevronRight, ChevronDown,
+  Mic, ImagePlus, AlignLeft, ChevronRight,
   Sparkles, Loader2, CheckCircle2, RefreshCw, Trash2,
-  AlertCircle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
