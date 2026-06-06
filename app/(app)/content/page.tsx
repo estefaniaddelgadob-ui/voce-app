@@ -3,15 +3,15 @@
 import { useState, useEffect, useRef } from "react";
 import {
   Sparkles, Loader2, ThumbsUp, ThumbsDown, RefreshCw,
-  ChevronDown, ChevronUp, ChevronRight, Plus, AlertCircle,
-  Camera, Edit2, CheckCircle2,
+  ChevronDown, ChevronRight, Plus, AlertCircle,
+  Camera, Edit2, CheckCircle2, Copy, Save,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-type ContentType  = "instagram_caption" | "carousel_script" | "reel_script" | "story_sequence" | "linkedin_post";
-type ToneOverride = "persona" | "casual" | "bold" | "vulnerable" | "educational";
+type ContentType   = "instagram_caption" | "carousel_script" | "reel_script" | "story_sequence" | "linkedin_post";
+type ToneOverride  = "persona" | "casual" | "bold" | "vulnerable" | "educational";
 type LibraryFilter = "all" | "generated" | "approved" | "published";
 
 interface ContentDraft {
@@ -61,7 +61,7 @@ const FEEDBACK_REASONS = [
   "Wrong energy", "Good ideas wrong words", "Too long",
 ] as const;
 
-const THIS_YEAR   = new Date().getFullYear();
+const THIS_YEAR    = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: THIS_YEAR - 2017 }, (_, i) => String(2018 + i));
 
 const LIBRARY_TABS: { id: LibraryFilter; label: string }[] = [
@@ -69,6 +69,13 @@ const LIBRARY_TABS: { id: LibraryFilter; label: string }[] = [
   { id: "generated", label: "Generated" },
   { id: "approved",  label: "Approved"  },
   { id: "published", label: "Published" },
+];
+
+const GENERATING_MESSAGES = [
+  "Thinking in your voice...",
+  "Crafting your hook...",
+  "Finding your tone...",
+  "Almost ready...",
 ];
 
 const inputCls =
@@ -82,7 +89,7 @@ function fmtDate(iso: string) {
   const days = Math.floor((now.getTime() - d.getTime()) / 86_400_000);
   if (days === 0) return "Today";
   if (days === 1) return "Yesterday";
-  if (days < 7)  return `${days} days ago`;
+  if (days < 7)  return `${days}d ago`;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
@@ -104,21 +111,131 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── Media suggestions ──────────────────────────────────────────────────────────
+
+interface ContentSection { label: string; text: string; }
+
+function parseBody(body: string): { type: "reel" | "carousel" | "story" | "caption"; sections: ContentSection[] } {
+  // Reel: has HOOK: label
+  if (/^HOOK:/mi.test(body)) {
+    const labels = body.match(/^(?:HOOK|BODY|POINT\s*\d*|CLOSE|CTA)[:\s]/mg) ?? [];
+    const parts  = body.split(/^(?:HOOK|BODY|POINT\s*\d*|CLOSE|CTA)[:\s]/mi);
+    const sections: ContentSection[] = labels.map((label, i) => ({
+      label: label.replace(/[:\s]+$/, "").trim(),
+      text:  (parts[i + 1] ?? "").trim().split("\n")[0].trim(),
+    }));
+    return { type: "reel", sections: sections.length > 0 ? sections : [{ label: "Script", text: "" }] };
+  }
+  // Carousel / Story sequence: has "Slide X" or "Frame X" / "Story X" pattern
+  const slideMatch = body.match(/(?:Slide|Frame|Story|Card)\s*\d+/ig);
+  if (slideMatch) {
+    const isStory = /(?:Frame|Story)\s*\d+/i.test(body);
+    const sections: ContentSection[] = slideMatch.map((label, i) => {
+      const after = body.split(new RegExp(label, "i"))[i + 1] ?? "";
+      return { label, text: after.trim().split("\n")[0].trim() };
+    });
+    return { type: isStory ? "story" : "carousel", sections };
+  }
+  return { type: "caption", sections: [{ label: "Caption", text: body }] };
+}
+
+function reelClipDesc(label: string): string {
+  const l = label.toLowerCase();
+  if (l === "hook")  return "energetic opening, talking directly to camera";
+  if (l === "body" || l.startsWith("point")) return "demonstrating your point — action, text overlay, or talking head";
+  if (l === "close" || l === "cta") return "warm, direct close — looking into the camera, clear CTA";
+  return "short, punchy clip showing the concept in action";
+}
+
+function MediaSuggestions({ body }: { body: string }) {
+  const { type, sections } = parseBody(body);
+
+  if (type === "reel") {
+    return (
+      <div className="mt-4 space-y-2 rounded-xl bg-[#F8F8FF] p-4">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">Media plan</p>
+        {sections.map((s, i) => (
+          <div key={i} className="rounded-lg bg-white px-3 py-2.5">
+            <p className="text-xs font-semibold text-[#0F172A]">{s.label}</p>
+            <p className="mt-0.5 text-xs text-[#64748B]">🎥 Clip: {reelClipDesc(s.label)}</p>
+          </div>
+        ))}
+        <p className="pt-1 text-[11px] text-[#94A3B8]">
+          You&apos;ll merge these clips into one Reel in your video editor.
+        </p>
+        <a href="/settings" className="block text-[11px] font-medium text-voce-indigo hover:underline">
+          Connect Google Photos to auto-match your media →
+        </a>
+      </div>
+    );
+  }
+
+  if (type === "carousel" || type === "story") {
+    const icon = type === "story" ? "🎥" : "📷";
+    return (
+      <div className="mt-4 space-y-2 rounded-xl bg-[#F8F8FF] p-4">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">
+          {type === "story" ? "Story media plan" : "Slide media plan"}
+        </p>
+        {sections.map((s, i) => (
+          <div key={i} className="rounded-lg bg-white px-3 py-2.5">
+            <p className="text-xs font-semibold text-[#0F172A]">{s.label}</p>
+            <p className="mt-0.5 text-xs text-[#64748B]">
+              {icon} A clear, eye-catching {type === "story" ? "video or image" : "image"} to illustrate this {type === "story" ? "frame" : "slide"} — on-brand, minimal background
+            </p>
+          </div>
+        ))}
+        <a href="/settings" className="block pt-1 text-[11px] font-medium text-voce-indigo hover:underline">
+          Connect Google Photos to auto-match your media →
+        </a>
+      </div>
+    );
+  }
+
+  // Caption / LinkedIn default: 2 image + 2 video slots
+  const slots = [
+    { icon: "📷", kind: "Image suggestion", desc: "A close-up, candid shot — natural light, authentic expression" },
+    { icon: "📷", kind: "Image suggestion", desc: "A behind-the-scenes moment showing your process or space"     },
+    { icon: "🎥", kind: "Video suggestion", desc: "A 3-5 second clip that matches the energy of your caption"    },
+    { icon: "🎥", kind: "Video suggestion", desc: "A talking-head clip or ambient video that adds context"        },
+  ];
+
+  return (
+    <div className="mt-4 rounded-xl bg-[#F8F8FF] p-4">
+      <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">Suggested media</p>
+      <div className="grid grid-cols-2 gap-2">
+        {slots.map((s, i) => (
+          <div key={i} className="rounded-lg bg-white px-3 py-2.5">
+            <p className="text-xs font-semibold text-[#0F172A]">{s.icon} {s.kind}</p>
+            <p className="mt-0.5 text-[11px] text-[#94A3B8]">{s.desc}</p>
+          </div>
+        ))}
+      </div>
+      <a href="/settings" className="mt-2 block text-[11px] font-medium text-voce-indigo hover:underline">
+        Connect Google Photos to auto-match your media →
+      </a>
+    </div>
+  );
+}
+
 // ── Content draft card ─────────────────────────────────────────────────────────
 
-function ContentDraftCard({ draft, showMediaPlaceholder, onStatusChange }: {
+function ContentDraftCard({ draft, onStatusChange }: {
   draft: ContentDraft;
-  showMediaPlaceholder: boolean;
   onStatusChange: (id: string, status: string) => void;
 }) {
   const [expanded,     setExpanded]     = useState(false);
   const [body,         setBody]         = useState(draft.body);
+  const [editing,      setEditing]      = useState(false);
   const [thumbs,       setThumbs]       = useState<"up" | "down" | null>(null);
   const [feedback,     setFeedback]     = useState<string[]>([]);
   const [status,       setStatus]       = useState(draft.status);
   const [approving,    setApproving]    = useState(false);
   const [publishing,   setPublishing]   = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [saveState,    setSaveState]    = useState<"idle" | "saving" | "saved">("idle");
+  const [copyState,    setCopyState]    = useState<"idle" | "copied">("idle");
+  const [cardError,    setCardError]    = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isApproved  = status === "approved";
@@ -126,40 +243,75 @@ function ContentDraftCard({ draft, showMediaPlaceholder, onStatusChange }: {
   const wordCount   = body.trim() ? body.trim().split(/\s+/).length : 0;
   const previewLine = body.split("\n").find(l => l.trim()) ?? body.slice(0, 80);
 
-  async function quickApprove() {
-    setApproving(true);
+  async function handleSave() {
+    if (saveState !== "idle") return;
+    setSaveState("saving");
     try {
       const supabase = createClient();
-      await supabase.from("content_drafts")
+      const { error } = await supabase.from("content_drafts")
+        .update({ body }).eq("id", draft.id);
+      if (error) throw error;
+      setSaveState("saved");
+      setTimeout(() => setSaveState("idle"), 2000);
+    } catch {
+      setSaveState("idle");
+    }
+  }
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(body);
+      setCopyState("copied");
+      setTimeout(() => setCopyState("idle"), 2000);
+    } catch {
+      // fallback: select textarea
+      textareaRef.current?.select();
+    }
+  }
+
+  async function quickApprove() {
+    setApproving(true); setCardError(null);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("content_drafts")
         .update({ status: "approved" }).eq("id", draft.id);
+      if (error) throw error;
       setStatus("approved");
       onStatusChange(draft.id, "approved");
+    } catch (err) {
+      setCardError(err instanceof Error ? err.message : "Approve failed — check status constraint in Supabase");
     } finally {
       setApproving(false);
     }
   }
 
   async function handleApprove() {
-    setApproving(true);
+    setApproving(true); setCardError(null);
     try {
       const supabase = createClient();
-      await supabase.from("content_drafts")
+      const { error } = await supabase.from("content_drafts")
         .update({ body, status: "approved" }).eq("id", draft.id);
+      if (error) throw error;
       setStatus("approved");
       onStatusChange(draft.id, "approved");
+    } catch (err) {
+      setCardError(err instanceof Error ? err.message : "Approve failed — check status constraint in Supabase");
     } finally {
       setApproving(false);
     }
   }
 
   async function handlePublish() {
-    setPublishing(true);
+    setPublishing(true); setCardError(null);
     try {
       const supabase = createClient();
-      await supabase.from("content_drafts")
+      const { error } = await supabase.from("content_drafts")
         .update({ status: "published" }).eq("id", draft.id);
+      if (error) throw error;
       setStatus("published");
       onStatusChange(draft.id, "published");
+    } catch (err) {
+      setCardError(err instanceof Error ? err.message : "Could not mark as published");
     } finally {
       setPublishing(false);
     }
@@ -196,19 +348,25 @@ function ContentDraftCard({ draft, showMediaPlaceholder, onStatusChange }: {
       setBody(newContent);
       setThumbs(null);
       setFeedback([]);
-      await supabase.from("content_drafts")
-        .update({ body: newContent }).eq("id", draft.id);
+      await supabase.from("content_drafts").update({ body: newContent }).eq("id", draft.id);
     } catch {
-      // silently fail — old content remains
+      // keep existing content
     } finally {
       setRegenerating(false);
     }
   }
 
   function toggleFeedback(r: string) {
-    setFeedback(prev =>
-      prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r]
-    );
+    setFeedback(prev => prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r]);
+  }
+
+  function toggleEdit() {
+    if (editing) {
+      setEditing(false);
+    } else {
+      setEditing(true);
+      setTimeout(() => { textareaRef.current?.focus(); }, 10);
+    }
   }
 
   return (
@@ -225,9 +383,7 @@ function ContentDraftCard({ draft, showMediaPlaceholder, onStatusChange }: {
           </div>
           <p className="line-clamp-1 text-sm text-[#0F172A]">{previewLine}</p>
           {draft.title && (
-            <p className="mt-0.5 line-clamp-1 text-xs text-[#94A3B8]">
-              Topic: {draft.title}
-            </p>
+            <p className="mt-0.5 line-clamp-1 text-xs text-[#94A3B8]">Topic: {draft.title}</p>
           )}
         </div>
         <div
@@ -238,40 +394,82 @@ function ContentDraftCard({ draft, showMediaPlaceholder, onStatusChange }: {
         </div>
       </button>
 
-      {/* Expanded detail */}
+      {/* Expanded */}
       {expanded && (
         <div className="border-t border-[#E2E2E0] px-4 pb-5 pt-4 space-y-4">
 
-          {/* Editable textarea */}
+          {/* Error */}
+          {cardError && (
+            <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {cardError}
+            </div>
+          )}
+
+          {/* Textarea */}
           <div>
             <textarea
               ref={textareaRef}
               value={body}
               onChange={e => setBody(e.target.value)}
+              readOnly={!editing}
               rows={Math.max(4, body.split("\n").length + 2)}
-              className="w-full resize-none rounded-xl bg-[#F8F8FF] px-4 py-3 text-sm leading-relaxed text-[#0F172A] outline-none transition focus:bg-white focus:ring-2 focus:ring-voce-indigo/20"
+              className={`w-full resize-none rounded-xl px-4 py-3 text-sm leading-relaxed text-[#0F172A] outline-none transition ${
+                editing
+                  ? "bg-white ring-2 ring-voce-indigo/20"
+                  : "cursor-default bg-[#F8F8FF]"
+              }`}
             />
             <p className="mt-1 text-right text-xs text-[#94A3B8]">{wordCount} words</p>
           </div>
 
-          {/* Media placeholder */}
-          {showMediaPlaceholder && (
-            <div className="rounded-lg bg-[#F4F4F2] px-4 py-3">
-              <p className="text-xs leading-relaxed text-[#64748B]">
-                📷 Media matching coming soon — connect your Google Photos in Settings to
-                automatically match photos and videos to your content.
-              </p>
-            </div>
-          )}
+          {/* Save / Edit / Copy buttons */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saveState === "saving"}
+              className="flex items-center gap-1.5 rounded-lg border border-[#E2E2E0] px-3 py-1.5 text-xs font-medium text-[#64748B] transition hover:border-voce-indigo/50 hover:text-voce-indigo disabled:opacity-60"
+            >
+              {saveState === "saving" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : saveState === "saved" ? (
+                <><CheckCircle2 className="h-3.5 w-3.5 text-voce-teal" /><span className="text-voce-teal">Saved ✓</span></>
+              ) : (
+                <><Save className="h-3.5 w-3.5" /> Save</>
+              )}
+            </button>
 
-          {/* ── Published state ── */}
+            <button
+              onClick={toggleEdit}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                editing
+                  ? "border-voce-indigo bg-voce-indigo/5 text-voce-indigo"
+                  : "border-[#E2E2E0] text-[#64748B] hover:border-voce-indigo/50 hover:text-voce-indigo"
+              }`}
+            >
+              <Edit2 className="h-3.5 w-3.5" />
+              {editing ? "Done editing" : "Edit"}
+            </button>
+
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1.5 rounded-lg border border-[#E2E2E0] px-3 py-1.5 text-xs font-medium text-[#64748B] transition hover:border-voce-indigo/50 hover:text-voce-indigo"
+            >
+              {copyState === "copied" ? (
+                <><CheckCircle2 className="h-3.5 w-3.5 text-voce-teal" /><span className="text-voce-teal">Copied ✓</span></>
+              ) : (
+                <><Copy className="h-3.5 w-3.5" /> Copy</>
+              )}
+            </button>
+          </div>
+
+          {/* ── Status-specific actions ── */}
+
           {isPublished && (
             <div className="flex items-center gap-2 text-sm font-medium text-voce-teal">
               <CheckCircle2 className="h-4 w-4" /> Published
             </div>
           )}
 
-          {/* ── Approved state ── */}
           {isApproved && !isPublished && (
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-voce-indigo">
@@ -290,54 +488,33 @@ function ContentDraftCard({ draft, showMediaPlaceholder, onStatusChange }: {
             </div>
           )}
 
-          {/* ── Generated state: action buttons ── */}
           {!isApproved && !isPublished && (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 {/* Thumbs up — quick approve */}
-                <button
-                  onClick={quickApprove}
-                  disabled={approving}
+                <button onClick={quickApprove} disabled={approving}
                   className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition disabled:opacity-60 ${
                     thumbs === "up"
                       ? "border-voce-teal bg-voce-teal/10 text-voce-teal"
                       : "border-[#E2E2E0] text-[#64748B] hover:border-voce-teal/50"
-                  }`}
-                >
-                  {approving
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    : <ThumbsUp className="h-3.5 w-3.5" />}
+                  }`}>
+                  {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5" />}
                 </button>
 
-                {/* Thumbs down — show feedback */}
-                <button
-                  onClick={() => setThumbs(t => t === "down" ? null : "down")}
+                {/* Thumbs down */}
+                <button onClick={() => setThumbs(t => t === "down" ? null : "down")}
                   className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition ${
                     thumbs === "down"
                       ? "border-red-400 bg-red-50 text-red-500"
                       : "border-[#E2E2E0] text-[#64748B] hover:border-red-300"
-                  }`}
-                >
+                  }`}>
                   <ThumbsDown className="h-3.5 w-3.5" />
                 </button>
 
-                {/* Edit — focus textarea */}
-                <button
-                  onClick={() => { textareaRef.current?.focus(); textareaRef.current?.select(); }}
-                  className="flex items-center gap-1.5 rounded-lg border border-[#E2E2E0] px-3 py-1.5 text-sm text-[#64748B] transition hover:border-voce-indigo/50 hover:text-voce-indigo"
-                >
-                  <Edit2 className="h-3.5 w-3.5" /> Edit
-                </button>
-
                 {/* Approve */}
-                <button
-                  onClick={handleApprove}
-                  disabled={approving}
-                  className="ml-auto flex min-h-[36px] items-center gap-1.5 rounded-lg bg-voce-indigo px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
-                >
-                  {approving
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    : <CheckCircle2 className="h-3.5 w-3.5" />}
+                <button onClick={handleApprove} disabled={approving}
+                  className="ml-auto flex min-h-[36px] items-center gap-1.5 rounded-lg bg-voce-indigo px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60">
+                  {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                   Approve
                 </button>
               </div>
@@ -360,11 +537,8 @@ function ContentDraftCard({ draft, showMediaPlaceholder, onStatusChange }: {
                     ))}
                   </div>
                   {feedback.length > 0 && (
-                    <button
-                      onClick={handleRegenerate}
-                      disabled={regenerating}
-                      className="flex min-h-[36px] items-center gap-2 rounded-lg border border-voce-indigo px-3 py-1.5 text-sm font-medium text-voce-indigo transition hover:bg-voce-indigo/5 disabled:opacity-60"
-                    >
+                    <button onClick={handleRegenerate} disabled={regenerating}
+                      className="flex min-h-[36px] items-center gap-2 rounded-lg border border-voce-indigo px-3 py-1.5 text-sm font-medium text-voce-indigo transition hover:bg-voce-indigo/5 disabled:opacity-60">
                       {regenerating
                         ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Regenerating…</>
                         : <><RefreshCw className="h-3.5 w-3.5" /> Regenerate</>}
@@ -374,6 +548,9 @@ function ContentDraftCard({ draft, showMediaPlaceholder, onStatusChange }: {
               )}
             </div>
           )}
+
+          {/* Media suggestions */}
+          <MediaSuggestions body={body} />
 
         </div>
       )}
@@ -394,18 +571,27 @@ export default function ContentPage() {
   const [variations,       setVariations]       = useState(3);
   const [toneOverride,     setToneOverride]     = useState<ToneOverride>("persona");
   const [outputLang,       setOutputLang]       = useState("English");
-  const [mediaOpen,        setMediaOpen]        = useState(false);
   const [matchMedia,       setMatchMedia]       = useState(false);
   const [mediaYearFrom,    setMediaYearFrom]    = useState(String(THIS_YEAR - 1));
   const [mediaYearTo,      setMediaYearTo]      = useState("present");
   const [generating,       setGenerating]       = useState(false);
+  const [msgIdx,           setMsgIdx]           = useState(0);
   const [error,            setError]            = useState<string | null>(null);
 
   // Library
   const [drafts,           setDrafts]           = useState<ContentDraft[]>([]);
   const [loadingDrafts,    setLoadingDrafts]    = useState(true);
   const [libraryFilter,    setLibraryFilter]    = useState<LibraryFilter>("all");
-  const [mediaMatchedIds,  setMediaMatchedIds]  = useState<Set<string>>(new Set());
+
+  // Cycle generating messages
+  useEffect(() => {
+    if (!generating) { setMsgIdx(0); return; }
+    const interval = setInterval(
+      () => setMsgIdx(i => (i + 1) % GENERATING_MESSAGES.length),
+      1500
+    );
+    return () => clearInterval(interval);
+  }, [generating]);
 
   // ── Load data ──────────────────────────────────────────────────────────────────
 
@@ -483,7 +669,7 @@ export default function ContentPage() {
         { id: 1, content: `HOOK:\n${data.hook ?? ""}\n\nBODY:\n${data.body ?? ""}\n\nCTA:\n${data.cta ?? ""}` },
       ];
 
-      // Save every variation to DB immediately
+      // Save every variation immediately
       const inserts = rawVariations.map(v => ({
         user_id:  user.id,
         title:    topic,
@@ -492,18 +678,13 @@ export default function ContentPage() {
         status:   "generated",
       }));
 
-      const { data: saved } = await supabase.from("content_drafts")
-        .insert(inserts).select();
+      const { data: saved, error: saveErr } = await supabase
+        .from("content_drafts").insert(inserts).select();
+      if (saveErr) console.error("Save error:", saveErr);
 
-      if (saved) {
-        setDrafts(prev => [...(saved as ContentDraft[]), ...prev]);
-        if (matchMedia) {
-          const newIds = (saved as ContentDraft[]).map(d => d.id);
-          setMediaMatchedIds(prev => { const next = new Set(prev); newIds.forEach(id => next.add(id)); return next; });
-        }
-      }
+      if (saved) setDrafts(prev => [...(saved as ContentDraft[]), ...prev]);
 
-      setGenOpen(false); // collapse after generation
+      setGenOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
     } finally {
@@ -528,7 +709,6 @@ export default function ContentPage() {
 
   return (
     <div>
-      {/* Header */}
       <div className="mb-6 pr-8 md:pr-0">
         <h1 className="text-2xl font-semibold text-[#0F172A]">Content</h1>
         <p className="mt-1 text-sm text-[#64748B]">Your voice. Your audience. In seconds.</p>
@@ -536,9 +716,9 @@ export default function ContentPage() {
 
       {/* ── Generation panel ── */}
       <div className="rounded-xl border border-[#E2E2E0] bg-white overflow-hidden">
-        {/* Collapsed header */}
+        {/* Header */}
         <button
-          onClick={() => setGenOpen(v => !v)}
+          onClick={() => { if (!generating) setGenOpen(v => !v); }}
           className="flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-[#FAFAF8]"
         >
           <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition ${
@@ -547,155 +727,164 @@ export default function ContentPage() {
             <Plus className="h-4 w-4" />
           </div>
           <span className="flex-1 text-sm font-semibold text-[#0F172A]">Generate new content</span>
-          <ChevronDown
-            className="h-4 w-4 shrink-0 text-[#94A3B8] transition-transform duration-200"
-            style={{ transform: genOpen ? "rotate(180deg)" : "none" }}
-          />
+          {!generating && (
+            <ChevronDown
+              className="h-4 w-4 shrink-0 text-[#94A3B8] transition-transform duration-200"
+              style={{ transform: genOpen ? "rotate(180deg)" : "none" }}
+            />
+          )}
         </button>
 
-        {/* Expanded form */}
+        {/* Body */}
         {genOpen && (
-          <div className="border-t border-[#E2E2E0] px-5 pb-6 pt-5 space-y-6">
+          <div className="border-t border-[#E2E2E0]">
+            {generating ? (
+              /* Generating animation */
+              <div className="flex flex-col items-center gap-5 py-14">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-voce-indigo/10 animate-pulse">
+                  <Sparkles className="h-8 w-8 text-voce-indigo" />
+                </div>
+                <p className="text-sm font-medium text-voce-indigo transition-all duration-500">
+                  {GENERATING_MESSAGES[msgIdx]}
+                </p>
+              </div>
+            ) : (
+              <div className="px-5 pb-6 pt-5 space-y-6">
 
-            {/* STEP 1 — Audience */}
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">
-                Step 1 — Choose your audience
-              </p>
-              {loadingAudiences ? (
-                <div className="flex items-center gap-2 text-sm text-[#94A3B8]">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Loading audiences…
-                </div>
-              ) : audiences.length === 0 ? (
-                <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  No audiences yet.{" "}
-                  <a href="/audience" className="font-semibold underline">Create one first →</a>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <select value={audienceId} onChange={e => setAudienceId(e.target.value)} className={inputCls}>
-                    {audiences.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                  {selectedAudience?.description && (
-                    <p className="px-1 text-xs text-[#94A3B8]">{selectedAudience.description}</p>
+                {/* STEP 1 — Audience */}
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">
+                    Step 1 — Choose your audience
+                  </p>
+                  {loadingAudiences ? (
+                    <div className="flex items-center gap-2 text-sm text-[#94A3B8]">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+                    </div>
+                  ) : audiences.length === 0 ? (
+                    <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      No audiences yet.{" "}
+                      <a href="/audience" className="font-semibold underline">Create one first →</a>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <select value={audienceId} onChange={e => setAudienceId(e.target.value)} className={inputCls}>
+                        {audiences.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      </select>
+                      {selectedAudience?.description && (
+                        <p className="px-1 text-xs text-[#94A3B8]">{selectedAudience.description}</p>
+                      )}
+                      <a href="/audience"
+                        className="inline-flex items-center gap-1 text-xs text-voce-indigo hover:underline">
+                        <Plus className="h-3 w-3" /> Create new audience
+                      </a>
+                    </div>
                   )}
-                  <a href="/audience"
-                    className="inline-flex items-center gap-1 text-xs text-voce-indigo hover:underline">
-                    <Plus className="h-3 w-3" /> Create new audience
-                  </a>
                 </div>
-              )}
-            </div>
 
-            {/* STEP 2 — What to create */}
-            <div className="space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">
-                Step 2 — What do you want to create?
-              </p>
+                {/* STEP 2 — What to create */}
+                <div className="space-y-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">
+                    Step 2 — What do you want to create?
+                  </p>
 
-              <div>
-                <label className="mb-2 block text-sm font-medium text-[#0F172A]">Content type</label>
-                <div className="flex flex-wrap gap-2">
-                  {CONTENT_TYPES.map(ct => (
-                    <button key={ct.id} type="button" onClick={() => setContentType(ct.id)}
-                      className={[
-                        "rounded-full px-3 py-1.5 text-sm font-medium transition",
-                        contentType === ct.id
-                          ? "bg-voce-indigo text-white"
-                          : "border border-[#E2E2E0] text-[#64748B] hover:border-voce-indigo/50",
-                      ].join(" ")}>
-                      {ct.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-[#0F172A]">
-                  What do you want to post about?
-                </label>
-                <textarea value={topic} onChange={e => setTopic(e.target.value)} rows={3}
-                  placeholder="e.g. The moment I realised I had to leave my job to save my mental health"
-                  className={inputCls} />
-              </div>
-
-              <div>
-                <div className="mb-3 flex items-baseline gap-2">
-                  <span className="text-3xl font-bold text-voce-indigo tabular-nums">{variations}</span>
-                  <span className="text-sm font-medium text-[#64748B]">
-                    {variations === 1 ? "variation" : "variations"}
-                  </span>
-                </div>
-                <input type="range" min={1} max={30} value={variations}
-                  onChange={e => setVariations(Number(e.target.value))}
-                  className="w-full cursor-pointer" style={{ accentColor: "#6366F1" }} />
-                <div className="mt-1 flex justify-between text-[10px] text-[#94A3B8]">
-                  <span>1</span><span>30</span>
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-[#0F172A]">
-                    Tone <span className="font-normal text-[#94A3B8]">optional override</span>
-                  </label>
-                  <select value={toneOverride} onChange={e => setToneOverride(e.target.value as ToneOverride)} className={inputCls}>
-                    {TONE_OVERRIDES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-[#0F172A]">Output language</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {LANGUAGES.map(l => (
-                      <button key={l} type="button" onClick={() => setOutputLang(l)}
-                        className={[
-                          "rounded-full px-3 py-1 text-sm font-medium transition",
-                          outputLang === l
-                            ? "bg-voce-indigo text-white"
-                            : "border border-[#E2E2E0] text-[#64748B] hover:border-voce-indigo/50",
-                        ].join(" ")}>
-                        {l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* STEP 3 — Media (optional) */}
-            <div>
-              <button type="button" onClick={() => setMediaOpen(v => !v)}
-                className="flex items-center gap-2 text-sm font-medium text-[#64748B] transition hover:text-[#0F172A]">
-                {mediaOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                Step 3 — Match with your media
-                <span className="text-xs font-normal text-[#94A3B8]">optional</span>
-              </button>
-
-              {mediaOpen && (
-                <div className="mt-4 space-y-4">
                   <div>
-                    <p className="mb-2 text-sm font-medium text-[#0F172A]">
-                      Match generated content with photos/videos from my library?
-                    </p>
-                    <div className="flex gap-2">
-                      {(["No", "Yes"] as const).map(opt => (
-                        <button key={opt} type="button"
-                          onClick={() => setMatchMedia(opt === "Yes")}
+                    <label className="mb-2 block text-sm font-medium text-[#0F172A]">Content type</label>
+                    <div className="flex flex-wrap gap-2">
+                      {CONTENT_TYPES.map(ct => (
+                        <button key={ct.id} type="button" onClick={() => setContentType(ct.id)}
                           className={[
-                            "flex h-11 w-20 items-center justify-center rounded-xl border text-sm font-semibold transition",
-                            (opt === "Yes") === matchMedia
-                              ? "border-voce-indigo bg-voce-indigo text-white"
-                              : "border-[#E2E2E0] text-[#64748B] hover:border-voce-indigo/50",
+                            "rounded-full px-3 py-1.5 text-sm font-medium transition",
+                            contentType === ct.id
+                              ? "bg-voce-indigo text-white"
+                              : "border border-[#E2E2E0] text-[#64748B] hover:border-voce-indigo/50",
                           ].join(" ")}>
-                          {opt}
+                          {ct.label}
                         </button>
                       ))}
                     </div>
                   </div>
 
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-[#0F172A]">
+                      What do you want to post about?
+                    </label>
+                    <textarea value={topic} onChange={e => setTopic(e.target.value)} rows={3}
+                      placeholder="e.g. The moment I realised I had to leave my job to save my mental health"
+                      className={inputCls} />
+                  </div>
+
+                  <div>
+                    <div className="mb-3 flex items-baseline gap-2">
+                      <span className="text-3xl font-bold text-voce-indigo tabular-nums">{variations}</span>
+                      <span className="text-sm font-medium text-[#64748B]">
+                        {variations === 1 ? "variation" : "variations"}
+                      </span>
+                    </div>
+                    <input type="range" min={1} max={30} value={variations}
+                      onChange={e => setVariations(Number(e.target.value))}
+                      className="w-full cursor-pointer" style={{ accentColor: "#6366F1" }} />
+                    <div className="mt-1 flex justify-between text-[10px] text-[#94A3B8]">
+                      <span>1</span><span>30</span>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-[#0F172A]">
+                        Tone <span className="font-normal text-[#94A3B8]">optional override</span>
+                      </label>
+                      <select value={toneOverride}
+                        onChange={e => setToneOverride(e.target.value as ToneOverride)}
+                        className={inputCls}>
+                        {TONE_OVERRIDES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-[#0F172A]">Output language</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {LANGUAGES.map(l => (
+                          <button key={l} type="button" onClick={() => setOutputLang(l)}
+                            className={[
+                              "rounded-full px-3 py-1 text-sm font-medium transition",
+                              outputLang === l
+                                ? "bg-voce-indigo text-white"
+                                : "border border-[#E2E2E0] text-[#64748B] hover:border-voce-indigo/50",
+                            ].join(" ")}>
+                            {l}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* STEP 3 — Media (YES/NO always visible) */}
+                <div>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">
+                    Step 3 — Match with your media
+                    <span className="ml-2 font-normal normal-case text-[#94A3B8]">optional</span>
+                  </p>
+                  <p className="mb-2 text-sm font-medium text-[#0F172A]">
+                    Match content with photos/videos from my library?
+                  </p>
+                  <div className="flex gap-2">
+                    {(["No", "Yes"] as const).map(opt => (
+                      <button key={opt} type="button"
+                        onClick={() => setMatchMedia(opt === "Yes")}
+                        className={[
+                          "flex h-11 w-20 items-center justify-center rounded-xl border text-sm font-semibold transition",
+                          (opt === "Yes") === matchMedia
+                            ? "border-voce-indigo bg-voce-indigo text-white"
+                            : "border-[#E2E2E0] text-[#64748B] hover:border-voce-indigo/50",
+                        ].join(" ")}>
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+
                   {matchMedia && (
-                    <div className="space-y-3 rounded-xl bg-[#F8F8FF] p-4">
+                    <div className="mt-4 space-y-3 rounded-xl bg-[#F8F8FF] p-4">
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div>
                           <label className="mb-1.5 block text-xs font-medium text-[#64748B]">From year</label>
@@ -721,27 +910,25 @@ export default function ContentPage() {
                     </div>
                   )}
                 </div>
-              )}
-            </div>
 
-            {/* Error */}
-            {error && (
-              <div className="flex items-center gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
-                <AlertCircle className="h-4 w-4 shrink-0" /> {error}
+                {/* Error */}
+                {error && (
+                  <div className="flex items-center gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                    <AlertCircle className="h-4 w-4 shrink-0" /> {error}
+                  </div>
+                )}
+
+                {/* Generate button */}
+                <button
+                  onClick={handleGenerate}
+                  disabled={!topic.trim() || !audienceId}
+                  className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-voce-indigo text-sm font-semibold text-white shadow-lg transition hover:opacity-90 disabled:opacity-60"
+                >
+                  <Sparkles className="h-5 w-5" /> Generate Content
+                </button>
+
               </div>
             )}
-
-            {/* Generate button */}
-            <button
-              onClick={handleGenerate}
-              disabled={generating || !topic.trim() || !audienceId}
-              className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-voce-indigo text-sm font-semibold text-white shadow-lg transition hover:opacity-90 disabled:opacity-60"
-            >
-              {generating
-                ? <><Loader2 className="h-5 w-5 animate-spin" /> Writing in your voice…</>
-                : <><Sparkles className="h-5 w-5" /> Generate Content</>}
-            </button>
-
           </div>
         )}
       </div>
@@ -750,25 +937,20 @@ export default function ContentPage() {
       <div className="mt-8">
         <h2 className="mb-4 text-base font-semibold text-[#0F172A]">Content library</h2>
 
-        {/* Filter tabs */}
         <div className="mb-4 flex rounded-xl bg-[#F4F4F2] p-1">
           {LIBRARY_TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setLibraryFilter(tab.id)}
+            <button key={tab.id} onClick={() => setLibraryFilter(tab.id)}
               className={[
                 "flex min-h-[36px] flex-1 items-center justify-center rounded-lg text-xs font-medium transition-all",
                 libraryFilter === tab.id
                   ? "bg-white text-[#0F172A] shadow-sm"
                   : "text-[#94A3B8] hover:text-[#64748B]",
-              ].join(" ")}
-            >
+              ].join(" ")}>
               {tab.label}
             </button>
           ))}
         </div>
 
-        {/* Cards */}
         {loadingDrafts ? (
           <div className="flex h-32 items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-voce-indigo" />
@@ -777,9 +959,7 @@ export default function ContentPage() {
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#E2E2E0] py-14 text-center">
             <Sparkles className="mb-3 h-8 w-8 text-[#E2E2E0]" />
             <p className="text-sm font-medium text-[#0F172A]">No content here yet</p>
-            <p className="mt-1 text-xs text-[#94A3B8]">
-              Generate your first post above!
-            </p>
+            <p className="mt-1 text-xs text-[#94A3B8]">Generate your first post above!</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -787,7 +967,6 @@ export default function ContentPage() {
               <ContentDraftCard
                 key={d.id}
                 draft={d}
-                showMediaPlaceholder={mediaMatchedIds.has(d.id)}
                 onStatusChange={handleStatusChange}
               />
             ))}

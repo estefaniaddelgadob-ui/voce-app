@@ -344,9 +344,25 @@ function PersonaForm({ persona, onSaved }: {
             Tell Voce about your voice, niche, and audience
           </p>
         </div>
-        <span className="mr-2 rounded-full bg-[#F4F4F2] px-2.5 py-0.5 text-[10px] font-medium text-[#94A3B8]">
-          Optional
-        </span>
+        {(
+          persona?.instagram_handle?.trim() ||
+          persona?.instagram_growth_handle?.trim() ||
+          persona?.niche?.trim() ||
+          persona?.audience?.trim() ||
+          (persona?.tone_words ?? []).length > 0 ||
+          persona?.tone_description?.trim() ||
+          persona?.beliefs?.trim() ||
+          persona?.recurring_themes?.trim() ||
+          persona?.pushback?.trim() ||
+          persona?.transformation_before?.trim() ||
+          persona?.transformation_after?.trim()
+        ) ? (
+          <span className="mr-2 text-sm font-semibold text-voce-teal">✓</span>
+        ) : (
+          <span className="mr-2 rounded-full bg-[#F4F4F2] px-2.5 py-0.5 text-[10px] font-medium text-[#94A3B8]">
+            Optional
+          </span>
+        )}
         <ChevronDown
           className="h-4 w-4 shrink-0 text-[#94A3B8] transition-transform duration-200"
           style={{ transform: open ? "rotate(180deg)" : "none" }}
