@@ -40,7 +40,8 @@
       "Bash(curl -s http://localhost:3099/_next/static/chunks/app/login/page-3bc13e82455c3a5d.js)",
       "Bash(curl -s http://localhost:3099/_next/static/chunks/app/layout-a51cb84e52bc68da.js)",
       "Bash(curl -sv http://localhost:3099/dashboard)",
-      "Bash(curl -s http://localhost:3001/_next/static/chunks/app/\\\\\\(app\\\\\\)/layout-575a0cefabd60497.js)"
+      "Bash(curl -s http://localhost:3001/_next/static/chunks/app/\\\\\\(app\\\\\\)/layout-575a0cefabd60497.js)",
+      "Bash(sudo npm *)"
     ]
   }
 }
