@@ -22,6 +22,9 @@ export const metadata: Metadata = {
     title: "Voce",
   },
   formatDetection: { telephone: false },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
   icons: {
     apple: "/icons/icon-192.png",
   },

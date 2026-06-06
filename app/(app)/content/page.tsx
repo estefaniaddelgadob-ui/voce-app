@@ -111,6 +111,26 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── Google Photos prompt (opens Settings in new tab) ──────────────────────────
+
+function GooglePhotosPrompt() {
+  return (
+    <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-voce-indigo/10 px-3 py-2.5">
+      <p className="text-xs text-voce-indigo">
+        📷 Connect Google Photos in Settings to auto-match your media
+      </p>
+      <a
+        href="/settings"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="shrink-0 rounded-lg bg-voce-indigo px-2.5 py-1 text-[11px] font-semibold text-white transition hover:opacity-90"
+      >
+        Open Settings
+      </a>
+    </div>
+  );
+}
+
 // ── Media suggestions ──────────────────────────────────────────────────────────
 
 interface ContentSection { label: string; text: string; }
@@ -163,9 +183,7 @@ function MediaSuggestions({ body }: { body: string }) {
         <p className="pt-1 text-[11px] text-[#94A3B8]">
           You&apos;ll merge these clips into one Reel in your video editor.
         </p>
-        <a href="/settings" className="block text-[11px] font-medium text-voce-indigo hover:underline">
-          Connect Google Photos to auto-match your media →
-        </a>
+        <GooglePhotosPrompt />
       </div>
     );
   }
@@ -185,9 +203,7 @@ function MediaSuggestions({ body }: { body: string }) {
             </p>
           </div>
         ))}
-        <a href="/settings" className="block pt-1 text-[11px] font-medium text-voce-indigo hover:underline">
-          Connect Google Photos to auto-match your media →
-        </a>
+        <GooglePhotosPrompt />
       </div>
     );
   }
@@ -211,9 +227,7 @@ function MediaSuggestions({ body }: { body: string }) {
           </div>
         ))}
       </div>
-      <a href="/settings" className="mt-2 block text-[11px] font-medium text-voce-indigo hover:underline">
-        Connect Google Photos to auto-match your media →
-      </a>
+      <GooglePhotosPrompt />
     </div>
   );
 }
@@ -694,18 +708,28 @@ export default function ContentPage() {
       console.log("[generate] parsed", rawVariations.length, "variations");
 
       // Save every variation immediately — surface any DB error visibly
+      // platform is intentionally null — the CHECK constraint only allows a fixed list
+      // and audience platforms may contain values outside that list (tiktok, facebook, etc.)
       const inserts = rawVariations.map(v => ({
         user_id:  user.id,
         title:    topic,
         body:     v.content,
-        platform: audience.platforms?.[0] ?? null,
+        platform: null,
         status:   "generated",
       }));
 
-      console.log("[generate] saving to content_drafts...");
+      console.log("[generate] saving to content_drafts...", inserts.map(i => ({ user_id: i.user_id, status: i.status, platform: i.platform })));
       const { data: saved, error: saveErr } = await supabase
         .from("content_drafts").insert(inserts).select();
-      console.log("[generate] saved:", saved?.length ?? 0, "saveErr:", saveErr);
+      console.log("[generate] saved:", saved?.length ?? 0, "saveErr:", saveErr ? JSON.stringify(saveErr) : null);
+
+      // Verify the rows actually landed in the DB
+      const { data: verify } = await supabase
+        .from("content_drafts")
+        .select("id, status, user_id, created_at")
+        .order("created_at", { ascending: false })
+        .limit(5);
+      console.log("DB verify after save:", verify);
 
       if (saveErr) {
         // Surface DB error — still show content but warn user
@@ -748,10 +772,10 @@ export default function ContentPage() {
   }
 
   const filteredDrafts = drafts.filter(d => {
-    if (libraryFilter === "generated") return d.status === "generated" || d.status === "draft";
+    if (libraryFilter === "generated") return d.status === "generated";
     if (libraryFilter === "approved")  return d.status === "approved";
     if (libraryFilter === "published") return d.status === "published";
-    return true;
+    return true; // "all" tab
   });
 
   const selectedAudience = audiences.find(a => a.id === audienceId);
