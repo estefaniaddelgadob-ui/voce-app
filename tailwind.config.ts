@@ -66,6 +66,11 @@ const config: Config = {
           "0%":   { transform: "scale(1)",   opacity: "0.4" },
           "100%": { transform: "scale(1.8)", opacity: "0" },
         },
+        "confetti-rise": {
+          "0%":   { transform: "translateY(0) rotate(0deg) scale(1)", opacity: "1" },
+          "80%":  { opacity: "1" },
+          "100%": { transform: "translateY(-220px) rotate(540deg) scale(0.4)", opacity: "0" },
+        },
       },
       animation: {
         "wave-1": "voce-wave 0.9s ease-in-out infinite 0s",
@@ -74,6 +79,7 @@ const config: Config = {
         "wave-4": "voce-wave 0.9s ease-in-out infinite 0.12s",
         "wave-5": "voce-wave 0.9s ease-in-out infinite 0s",
         "ripple": "voce-ripple 1.4s ease-out infinite",
+        "confetti-rise": "confetti-rise var(--duration, 1.4s) ease-out forwards",
       },
     },
   },

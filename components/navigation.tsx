@@ -3,42 +3,28 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard, Mic, UserCircle, Users,
-  FilePlus, Library, CalendarDays, Settings, LogOut,
+  Home, Mic, Sparkles, Users, FileText,
+  Settings, LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { createClient } from "@/lib/supabase";
 
-// ── Route definitions ──────────────────────────────────────────────────────────
+// ── Shared nav items ───────────────────────────────────────────────────────────
 
-const MOBILE_NAV = [
-  { label: "Home",    href: "/dashboard",   icon: LayoutDashboard },
-  { label: "Record",  href: "/record",      icon: Mic },
-  { label: "Content", href: "/content/new", icon: FilePlus },
-  { label: "Library", href: "/library",     icon: Library },
-  { label: "Settings",href: "/settings",    icon: Settings },
-] as const;
-
-const DESKTOP_NAV = [
-  { label: "Dashboard",  href: "/dashboard",       icon: LayoutDashboard },
-  { label: "Record",     href: "/record",           icon: Mic },
-  { label: "My Persona", href: "/my-persona",       icon: UserCircle },
-  { label: "Audiences",  href: "/my-audiences",     icon: Users },
-  { label: "Content",    href: "/content/new",      icon: FilePlus },
-  { label: "Library",    href: "/library",          icon: Library },
-  { label: "Schedule",   href: "/content/calendar", icon: CalendarDays },
+const NAV_ITEMS = [
+  { label: "Home",     href: "/dashboard",  icon: Home      },
+  { label: "Audience", href: "/audience",   icon: Users     },
+  { label: "Persona",  href: "/my-persona", icon: Sparkles  },
+  { label: "Record",   href: "/record",     icon: Mic       },
+  { label: "Content",  href: "/content",    icon: FileText  },
 ] as const;
 
 // ── Active-path helper ─────────────────────────────────────────────────────────
 
 function useIsActive() {
   const pathname = usePathname();
-  return (href: string) => {
-    if (href === "/content/new")      return pathname === "/content/new";
-    if (href === "/content/calendar") return pathname.startsWith("/content/calendar");
-    return pathname === href || pathname.startsWith(href + "/");
-  };
+  return (href: string) => pathname === href || pathname.startsWith(href + "/");
 }
 
 // ── Mobile bottom navigation ───────────────────────────────────────────────────
@@ -47,29 +33,22 @@ export function BottomNav() {
   const isActive = useIsActive();
 
   return (
-    /* shown only below md; height is h-16 (64px) + iOS safe-area inset */
     <nav
       className="fixed bottom-0 left-0 right-0 z-50 flex border-t border-[#E2E2E0] bg-white md:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      {MOBILE_NAV.map(({ label, href, icon: Icon }) => {
+      {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
         const active = isActive(href);
         return (
           <Link
             key={href}
             href={href}
             className={cn(
-              /* 44px minimum touch target — h-16 gives 64px */
               "flex h-16 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors",
               active ? "text-voce-indigo" : "text-[#94A3B8]"
             )}
           >
-            <Icon
-              className={cn(
-                "h-[22px] w-[22px] shrink-0",
-                active ? "text-voce-indigo" : "text-[#94A3B8]"
-              )}
-            />
+            <Icon className={cn("h-[22px] w-[22px] shrink-0", active ? "text-voce-indigo" : "text-[#94A3B8]")} />
             {label}
           </Link>
         );
@@ -95,12 +74,7 @@ function SidebarLink({
           : "text-[#64748B] hover:bg-[#F4F4F2] hover:text-[#0F172A]"
       )}
     >
-      <Icon
-        className={cn(
-          "h-[18px] w-[18px] shrink-0",
-          active ? "text-voce-indigo" : "text-[#94A3B8]"
-        )}
-      />
+      <Icon className={cn("h-[18px] w-[18px] shrink-0", active ? "text-voce-indigo" : "text-[#94A3B8]")} />
       <span className="truncate">{label}</span>
       {active && (
         <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-voce-indigo" />
@@ -120,7 +94,6 @@ export function Sidebar() {
   }
 
   return (
-    /* hidden on mobile, flex column on desktop */
     <aside className="fixed inset-y-0 left-0 z-50 hidden w-60 flex-col border-r border-[#E2E2E0] bg-white md:flex">
       {/* Logo */}
       <div className="flex h-16 items-center px-5">
@@ -142,7 +115,7 @@ export function Sidebar() {
       {/* Main nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-0.5">
-          {DESKTOP_NAV.map(({ label, href, icon }) => (
+          {NAV_ITEMS.map(({ label, href, icon }) => (
             <li key={href}>
               <SidebarLink href={href} icon={icon} label={label} active={isActive(href)} />
             </li>
@@ -152,7 +125,7 @@ export function Sidebar() {
 
       <Separator />
 
-      {/* Bottom: settings + sign out */}
+      {/* Bottom: Settings + sign out */}
       <nav className="px-3 py-4">
         <ul className="space-y-0.5">
           <li>
@@ -173,7 +146,7 @@ export function Sidebar() {
   );
 }
 
-// ── Combined export used by layout ────────────────────────────────────────────
+// ── Combined export ────────────────────────────────────────────────────────────
 
 export function Navigation() {
   return (

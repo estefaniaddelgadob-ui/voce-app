@@ -5,7 +5,7 @@ import {
 } from "react";
 import {
   Mic, Square, Play, Pause, Loader2, Save,
-  RotateCcw, ImagePlus, X, CheckCircle2,
+  Trash2, ImagePlus, X, CheckCircle2,
   Upload, FileAudio, AlignLeft,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
@@ -213,7 +213,7 @@ function ResultsCard({
       <div className="flex gap-3 pt-1">
         {saveState === "saved" ? (
           <div className="flex items-center gap-2 text-sm font-semibold text-voce-teal">
-            <CheckCircle2 className="h-5 w-5" /> Note saved! ✓
+            <CheckCircle2 className="h-5 w-5" /> Note saved to your Persona ✓
           </div>
         ) : (
           <button
@@ -228,9 +228,9 @@ function ResultsCard({
         )}
         <button
           onClick={onReset}
-          className="flex min-h-[44px] items-center gap-2 rounded-xl border border-[#E2E2E0] px-4 py-2.5 text-sm font-medium text-[#64748B] transition hover:bg-[#F4F4F2]"
+          className="flex min-h-[44px] items-center gap-2 rounded-xl border border-[#E2E2E0] px-4 py-2.5 text-sm font-medium text-red-500 transition hover:bg-red-50"
         >
-          <RotateCcw className="h-4 w-4" /> New note
+          <Trash2 className="h-4 w-4" /> Delete note
         </button>
       </div>
     </div>
