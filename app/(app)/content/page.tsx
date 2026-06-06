@@ -582,6 +582,8 @@ export default function ContentPage() {
   const [drafts,           setDrafts]           = useState<ContentDraft[]>([]);
   const [loadingDrafts,    setLoadingDrafts]    = useState(true);
   const [libraryFilter,    setLibraryFilter]    = useState<LibraryFilter>("all");
+  const [genSuccessMsg,    setGenSuccessMsg]    = useState<string | null>(null);
+  const libraryRef = useRef<HTMLDivElement>(null);
 
   // Cycle generating messages
   useEffect(() => {
@@ -594,6 +596,21 @@ export default function ContentPage() {
   }, [generating]);
 
   // ── Load data ──────────────────────────────────────────────────────────────────
+
+  async function reloadDrafts() {
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data, error } = await supabase.from("content_drafts")
+        .select("*").eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+      console.log("[reloadDrafts]", { count: data?.length, error });
+      if (data) setDrafts(data as ContentDraft[]);
+    } catch (err) {
+      console.error("[reloadDrafts] error:", err);
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -614,6 +631,7 @@ export default function ContentPage() {
         if (list.length > 0) setAudienceId(list[0].id);
         if (personaRes.data?.output_language) setOutputLang(personaRes.data.output_language);
         setDrafts((draftsRes.data as ContentDraft[]) ?? []);
+        console.log("[load] drafts count:", draftsRes.data?.length ?? 0);
       } finally {
         setLoadingAud(false);
         setLoadingDrafts(false);
@@ -627,12 +645,14 @@ export default function ContentPage() {
   async function handleGenerate() {
     if (!topic.trim()) { setError("Please enter a topic."); return; }
     if (!audienceId)   { setError("Please select an audience."); return; }
-    setGenerating(true); setError(null);
+    setGenerating(true); setError(null); setGenSuccessMsg(null);
+    console.log("[generate] clicked — topic:", topic, "audienceId:", audienceId, "variations:", variations);
 
     try {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
+      console.log("[generate] user:", user.id);
 
       const [personaRes, thoughtsRes] = await Promise.all([
         supabase.from("persona_profile").select("*").eq("user_id", user.id).single(),
@@ -640,14 +660,16 @@ export default function ContentPage() {
           .eq("user_id", user.id).eq("status", "processed")
           .order("created_at", { ascending: false }).limit(10),
       ]);
+      console.log("[generate] persona:", personaRes.data?.display_name, "thoughts:", thoughtsRes.data?.length);
 
-      const audience    = audiences.find(a => a.id === audienceId);
+      const audience = audiences.find(a => a.id === audienceId);
       if (!audience) throw new Error("Audience not found");
 
       const mediaContext = matchMedia
         ? `Match with photos/videos from ${mediaYearFrom} to ${mediaYearTo === "present" ? "now" : mediaYearTo}`
         : null;
 
+      console.log("[generate] calling API...");
       const res = await fetch("/api/generate-content", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
@@ -663,13 +685,15 @@ export default function ContentPage() {
         }),
       });
       const data = await res.json();
+      console.log("[generate] API response:", JSON.stringify(data).slice(0, 400));
       if (data.error) throw new Error(data.error);
 
       const rawVariations: { id: number; content: string }[] = data.variations ?? [
         { id: 1, content: `HOOK:\n${data.hook ?? ""}\n\nBODY:\n${data.body ?? ""}\n\nCTA:\n${data.cta ?? ""}` },
       ];
+      console.log("[generate] parsed", rawVariations.length, "variations");
 
-      // Save every variation immediately
+      // Save every variation immediately — surface any DB error visibly
       const inserts = rawVariations.map(v => ({
         user_id:  user.id,
         title:    topic,
@@ -678,15 +702,37 @@ export default function ContentPage() {
         status:   "generated",
       }));
 
+      console.log("[generate] saving to content_drafts...");
       const { data: saved, error: saveErr } = await supabase
         .from("content_drafts").insert(inserts).select();
-      if (saveErr) console.error("Save error:", saveErr);
+      console.log("[generate] saved:", saved?.length ?? 0, "saveErr:", saveErr);
 
-      if (saved) setDrafts(prev => [...(saved as ContentDraft[]), ...prev]);
+      if (saveErr) {
+        // Surface DB error — still show content but warn user
+        setError(`Saved to screen but DB write failed: ${saveErr.message}. Check your content_drafts constraints.`);
+        // Put the variations in drafts as temporary in-memory items
+        const tempDrafts = rawVariations.map((v, i) => ({
+          id: `temp-${Date.now()}-${i}`,
+          title: topic,
+          body: v.content,
+          platform: audience.platforms?.[0] ?? null,
+          status: "generated",
+          created_at: new Date().toISOString(),
+        } as ContentDraft));
+        setDrafts(prev => [...tempDrafts, ...prev]);
+      } else if (saved) {
+        setDrafts(prev => [...(saved as ContentDraft[]), ...prev]);
+        setGenSuccessMsg(`${saved.length} post${saved.length !== 1 ? "s" : ""} generated ✓`);
+        setTimeout(() => setGenSuccessMsg(null), 4000);
+      }
 
       setGenOpen(false);
+      // Scroll to library
+      setTimeout(() => libraryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 200);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Generation failed");
+      const msg = err instanceof Error ? err.message : "Generation failed";
+      console.error("[generate] error:", msg);
+      setError(`Something went wrong — ${msg}`);
     } finally {
       setGenerating(false);
     }
@@ -695,7 +741,10 @@ export default function ContentPage() {
   // ── Library helpers ────────────────────────────────────────────────────────────
 
   function handleStatusChange(id: string, newStatus: string) {
+    // Update local state immediately for instant UI feedback
     setDrafts(prev => prev.map(d => d.id === id ? { ...d, status: newStatus } : d));
+    // Then refetch from Supabase to confirm DB state and sync tab counts
+    reloadDrafts();
   }
 
   const filteredDrafts = drafts.filter(d => {
@@ -934,8 +983,15 @@ export default function ContentPage() {
       </div>
 
       {/* ── Content library ── */}
-      <div className="mt-8">
-        <h2 className="mb-4 text-base font-semibold text-[#0F172A]">Content library</h2>
+      <div className="mt-8" ref={libraryRef}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-[#0F172A]">Content library</h2>
+          {genSuccessMsg && (
+            <span className="flex items-center gap-1.5 text-sm font-medium text-voce-teal">
+              <CheckCircle2 className="h-4 w-4" /> {genSuccessMsg}
+            </span>
+          )}
+        </div>
 
         <div className="mb-4 flex rounded-xl bg-[#F4F4F2] p-1">
           {LIBRARY_TABS.map(tab => (

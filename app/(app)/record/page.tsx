@@ -3,6 +3,7 @@
 import {
   useState, useRef, useCallback, useEffect, useMemo,
 } from "react";
+import Link from "next/link";
 import {
   Mic, Square, Play, Pause, Loader2, Save,
   Trash2, ImagePlus, X, CheckCircle2,
@@ -21,9 +22,15 @@ interface Analysis {
 }
 
 interface NoteResult {
-  transcript: string;
-  analysis:   Analysis;
+  transcript:  string;
+  analysis:    Analysis;
   durationSec?: number;
+}
+
+interface NoteEdits {
+  transcript: string;
+  ideas:      string[];
+  themes:     string[];
 }
 
 type SaveState = "idle" | "saving" | "saved";
@@ -41,34 +48,37 @@ const TONE_COLORS: Record<string, string> = {
 };
 function toneColor(tone: string) { return TONE_COLORS[tone.toLowerCase()] ?? "#64748B"; }
 
-// ── Waveform bars — CSS animated, 5 bars ──────────────────────────────────────
+function errMsg(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null) {
+    const e = err as Record<string, unknown>;
+    if (typeof e.message === "string") return e.message;
+    if (typeof e.details === "string") return e.details;
+    if (typeof e.code   === "string") return `DB error ${e.code}`;
+    return JSON.stringify(e);
+  }
+  return String(err);
+}
 
-const WAVE_ANIMS = [
-  "animate-wave-1", "animate-wave-2", "animate-wave-3",
-  "animate-wave-4", "animate-wave-5",
-] as const;
+// ── Waveform bars ──────────────────────────────────────────────────────────────
 
-const WAVE_HEIGHTS = ["16px", "24px", "32px", "24px", "16px"] as const;
+const WAVE_ANIMS   = ["animate-wave-1","animate-wave-2","animate-wave-3","animate-wave-4","animate-wave-5"] as const;
+const WAVE_HEIGHTS = ["16px","24px","32px","24px","16px"] as const;
 
 function WaveformBars({ active }: { active: boolean }) {
   return (
     <div className="flex items-center justify-center gap-1.5" style={{ height: "40px" }}>
       {WAVE_ANIMS.map((anim, i) => (
-        <div
-          key={i}
+        <div key={i}
           className={`w-1.5 rounded-full bg-voce-indigo transition-all duration-300 ${active ? anim : "opacity-30"}`}
-          style={
-            active
-              ? ({ "--wave-h": WAVE_HEIGHTS[i] } as React.CSSProperties)
-              : { height: "4px" }
-          }
+          style={active ? ({ "--wave-h": WAVE_HEIGHTS[i] } as React.CSSProperties) : { height: "4px" }}
         />
       ))}
     </div>
   );
 }
 
-// ── Audio player ──────────────────────────────────────────────────────────────
+// ── Audio player ───────────────────────────────────────────────────────────────
 
 function AudioPlayer({ blob }: { blob: Blob }) {
   const audioRef              = useRef<HTMLAudioElement>(null);
@@ -96,61 +106,80 @@ function AudioPlayer({ blob }: { blob: Blob }) {
 
   return (
     <div className="flex items-center gap-3 rounded-xl bg-[#F4F4F2] px-4 py-3">
-      <button
-        onClick={toggle}
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-voce-indigo text-white transition active:scale-95"
-      >
+      <button onClick={toggle}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-voce-indigo text-white transition active:scale-95">
         {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 pl-0.5" />}
       </button>
-
-      {/* Progress track */}
-      <div
-        className="relative h-1.5 flex-1 cursor-pointer overflow-hidden rounded-full bg-[#E2E2E0]"
-        onClick={seek}
-      >
-        <div
-          className="absolute inset-y-0 left-0 rounded-full bg-voce-indigo transition-all"
-          style={{ width: `${pct}%` }}
-        />
+      <div className="relative h-1.5 flex-1 cursor-pointer overflow-hidden rounded-full bg-[#E2E2E0]" onClick={seek}>
+        <div className="absolute inset-y-0 left-0 rounded-full bg-voce-indigo transition-all" style={{ width: `${pct}%` }} />
       </div>
-
       <span className="shrink-0 tabular-nums text-xs text-[#64748B]">
         {fmtTime(Math.round(current))}/{fmtTime(Math.round(total))}
       </span>
-
-      <audio
-        ref={audioRef}
-        src={url}
+      <audio ref={audioRef} src={url}
         onTimeUpdate={() => setCurrent(audioRef.current?.currentTime ?? 0)}
         onLoadedMetadata={() => setTotal(audioRef.current?.duration ?? 0)}
-        onEnded={() => setPlaying(false)}
-      />
+        onEnded={() => setPlaying(false)} />
     </div>
   );
 }
 
-// ── Results card ──────────────────────────────────────────────────────────────
+// ── Saved screen ───────────────────────────────────────────────────────────────
+
+function SavedScreen({ onRecordAnother }: { onRecordAnother: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-6 py-10 text-center">
+      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-voce-teal/10">
+        <CheckCircle2 className="h-8 w-8 text-voce-teal" />
+      </div>
+      <div>
+        <p className="text-base font-semibold text-[#0F172A]">✓ Saved to your Persona</p>
+        <p className="mt-1 text-sm text-[#64748B]">
+          Your thoughts are helping Voce learn your voice.
+        </p>
+      </div>
+      <div className="flex w-full max-w-xs flex-col gap-3">
+        <button
+          onClick={onRecordAnother}
+          className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-voce-indigo px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+        >
+          <Mic className="h-4 w-4" /> Record something else
+        </button>
+        <Link
+          href="/dashboard"
+          className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[#E2E2E0] px-5 py-2.5 text-sm font-medium text-[#64748B] transition hover:bg-[#F4F4F2]"
+        >
+          Go to home
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// ── Results card ───────────────────────────────────────────────────────────────
 
 function ResultsCard({
   result, saveState, onSave, onReset,
 }: {
-  result: NoteResult;
+  result:    NoteResult;
   saveState: SaveState;
-  onSave: (themes: string[]) => void;
-  onReset: () => void;
+  onSave:    (edits: NoteEdits) => void;
+  onReset:   () => void;
 }) {
-  const [themes,   setThemes]  = useState<string[]>(result.analysis.themes ?? []);
-  const [newTheme, setNewTheme] = useState("");
+  const [transcript, setTranscript] = useState(result.transcript);
+  const [ideas,      setIdeas]      = useState<string[]>(result.analysis.ideas ?? []);
+  const [themes,     setThemes]     = useState<string[]>(result.analysis.themes ?? []);
+  const [newTheme,   setNewTheme]   = useState("");
   const tc = toneColor(result.analysis.tone);
 
-  function removeTheme(t: string) {
-    setThemes(prev => prev.filter(x => x !== t));
-  }
-
+  function removeTheme(t: string) { setThemes(prev => prev.filter(x => x !== t)); }
   function addTheme() {
     const t = newTheme.trim();
     if (t && !themes.includes(t)) setThemes(prev => [...prev, t]);
     setNewTheme("");
+  }
+  function updateIdea(i: number, v: string) {
+    const next = [...ideas]; next[i] = v; setIdeas(next);
   }
 
   return (
@@ -159,39 +188,45 @@ function ResultsCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h3 className="text-base font-semibold text-[#0F172A]">{result.analysis.title}</h3>
         {result.analysis.tone && (
-          <span
-            className="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium"
-            style={{ backgroundColor: `${tc}18`, color: tc }}
-          >
+          <span className="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium"
+            style={{ backgroundColor: `${tc}18`, color: tc }}>
             {result.analysis.tone}
           </span>
         )}
       </div>
 
-      {/* Transcript */}
+      {/* Transcript — editable */}
       <div>
         <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">Transcript</p>
-        <p className="rounded-xl bg-[#F4F4F2] px-4 py-3 text-sm leading-relaxed text-[#0F172A]">
-          {result.transcript}
-        </p>
+        <textarea
+          value={transcript}
+          onChange={e => setTranscript(e.target.value)}
+          rows={Math.max(3, transcript.split("\n").length + 1)}
+          className="w-full resize-none rounded-xl bg-[#F4F4F2] px-4 py-3 text-sm leading-relaxed text-[#0F172A] outline-none transition focus:bg-white focus:ring-2 focus:ring-voce-indigo/20"
+        />
       </div>
 
-      {/* Key ideas */}
-      {result.analysis.ideas?.length > 0 && (
+      {/* Key ideas — each editable */}
+      {ideas.length > 0 && (
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">Key Ideas</p>
           <ul className="space-y-2">
-            {result.analysis.ideas.map((idea, i) => (
-              <li key={i} className="flex items-start gap-2.5 text-sm text-[#0F172A]">
-                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-voce-indigo" />
-                {idea}
+            {ideas.map((idea, i) => (
+              <li key={i} className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-voce-indigo" />
+                <input
+                  type="text"
+                  value={idea}
+                  onChange={e => updateIdea(i, e.target.value)}
+                  className="flex-1 rounded-lg border border-[#E2E2E0] bg-white px-3 py-1.5 text-sm text-[#0F172A] outline-none transition focus:border-voce-indigo focus:ring-2 focus:ring-voce-indigo/20"
+                />
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      {/* Themes — editable */}
+      {/* Themes — editable pills */}
       <div>
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">Themes</p>
         <div className="mb-2.5 flex flex-wrap gap-2">
@@ -221,8 +256,7 @@ function ResultsCard({
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">Standout Phrases</p>
           <div className="space-y-2">
             {result.analysis.phrases.map((p, i) => (
-              <p key={i}
-                className="border-l-2 border-voce-indigo/40 pl-3 text-sm italic text-[#64748B]">
+              <p key={i} className="border-l-2 border-voce-indigo/40 pl-3 text-sm italic text-[#64748B]">
                 &ldquo;{p}&rdquo;
               </p>
             ))}
@@ -232,83 +266,68 @@ function ResultsCard({
 
       {/* Actions */}
       <div className="flex gap-3 pt-1">
-        {saveState === "saved" ? (
-          <div className="flex items-center gap-2 text-sm font-semibold text-voce-teal">
-            <CheckCircle2 className="h-5 w-5" /> Note saved to your Library ✓
-          </div>
-        ) : (
-          <button
-            onClick={() => onSave(themes)}
-            disabled={saveState === "saving"}
-            className="flex min-h-[44px] items-center gap-2 rounded-xl bg-voce-indigo px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-          >
-            {saveState === "saving"
-              ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</>
-              : <><Save className="h-4 w-4" /> Save to Library</>}
-          </button>
-        )}
+        <button
+          onClick={() => onSave({ transcript, ideas, themes })}
+          disabled={saveState === "saving"}
+          className="flex min-h-[44px] items-center gap-2 rounded-xl bg-voce-indigo px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+        >
+          {saveState === "saving"
+            ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</>
+            : <><Save className="h-4 w-4" /> Save to Library</>}
+        </button>
         <button
           onClick={onReset}
           className="flex min-h-[44px] items-center gap-2 rounded-xl border border-[#E2E2E0] px-4 py-2.5 text-sm font-medium text-red-500 transition hover:bg-red-50"
         >
-          <Trash2 className="h-4 w-4" /> Delete note
+          <Trash2 className="h-4 w-4" /> Delete
         </button>
       </div>
     </div>
   );
 }
 
-// ── Shared analysis + save logic ───────────────────────────────────────────────
-
-async function analyzeTranscript(transcript: string): Promise<Analysis> {
-  const res = await fetch("/api/analyze", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ transcript }),
-  });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error);
-  return data as Analysis;
-}
-
-// Extracts a readable message from any thrown value — including Supabase
-// PostgrestError, which is a plain object (not an Error instance).
-function errMsg(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "object" && err !== null) {
-    const e = err as Record<string, unknown>;
-    if (typeof e.message === "string") return e.message;
-    if (typeof e.details === "string") return e.details;
-    if (typeof e.code   === "string") return `DB error ${e.code}`;
-    return JSON.stringify(e);
-  }
-  return String(err);
-}
+// ── Save note ──────────────────────────────────────────────────────────────────
 
 async function saveNote(
-  result: NoteResult,
+  result:   NoteResult,
   noteType: "voice" | "photo" | "text",
-  editedThemes?: string[]
+  edits?:   NoteEdits
 ) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  const finalTranscript = edits?.transcript ?? result.transcript;
+  const finalThemes     = edits?.themes     ?? result.analysis.themes ?? [];
+  const finalAnalysis   = edits?.ideas
+    ? { ...result.analysis, ideas: edits.ideas }
+    : result.analysis;
+
   const response = await supabase.from("thought_notes").insert({
     user_id:          user.id,
     type:             noteType,
     title:            result.analysis.title,
-    transcript:       result.transcript,
-    themes:           editedThemes ?? result.analysis.themes ?? [],
-    raw_ideas:        JSON.stringify(result.analysis),  // stringify so TEXT/JSONB both work
+    transcript:       finalTranscript,
+    themes:           finalThemes,
+    raw_ideas:        JSON.stringify(finalAnalysis),
     duration_seconds: result.durationSec ?? null,
     status:           "processed",
   }).select();
 
-  // Always log so errors are visible in the browser console
   console.log("[saveNote] Supabase response:", JSON.stringify(response, null, 2));
 
   if (response.error) throw response.error;
+}
+
+async function analyzeTranscript(transcript: string): Promise<Analysis> {
+  const res = await fetch("/api/analyze", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ transcript }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data as Analysis;
 }
 
 // ── VOICE TAB ─────────────────────────────────────────────────────────────────
@@ -335,18 +354,14 @@ function VoiceTab() {
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      chunksRef.current = [];
-
+      streamRef.current  = stream;
+      chunksRef.current  = [];
       const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4"
-        : "";
-
+        : MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "";
       const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mr.start(100);
       mrRef.current = mr;
-
       setElapsed(0);
       setPhase("recording");
       timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
@@ -359,16 +374,12 @@ function VoiceTab() {
     if (timerRef.current) clearInterval(timerRef.current);
     const mr = mrRef.current;
     if (!mr) return;
-
     const duration = elapsed;
-
     await new Promise<void>((res) => { mr.onstop = () => res(); mr.stop(); });
     streamRef.current?.getTracks().forEach((t) => t.stop());
-
     const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
     setBlob(blob);
     setPhase("processing");
-
     try {
       setStepMsg("Transcribing with Whisper…");
       const fd = new FormData();
@@ -376,10 +387,8 @@ function VoiceTab() {
       const tRes = await fetch("/api/transcribe", { method: "POST", body: fd });
       const { transcript, error: tErr } = await tRes.json();
       if (tErr) throw new Error(tErr);
-
       setStepMsg("Extracting ideas with Claude…");
       const analysis = await analyzeTranscript(transcript);
-
       setResult({ transcript, analysis, durationSec: duration });
       setPhase("done");
     } catch (err) {
@@ -388,11 +397,11 @@ function VoiceTab() {
     }
   }, [elapsed]);
 
-  async function handleSave(editedThemes: string[]) {
+  async function handleSave(edits: NoteEdits) {
     if (!result) return;
     setSave("saving");
     try {
-      await saveNote(result, "voice", editedThemes);
+      await saveNote(result, "voice", edits);
       setSave("saved");
     } catch (err) {
       setError(errMsg(err));
@@ -407,74 +416,54 @@ function VoiceTab() {
 
   const isRecording = phase === "recording";
 
+  if (saveState === "saved") return <SavedScreen onRecordAnother={reset} />;
+
   return (
     <div className="flex flex-col items-center">
-      {/* ── Recording UI ── */}
       {phase !== "done" && (
         <>
-          {/* Waveform bars */}
-          <div className="mt-2 mb-6">
-            <WaveformBars active={isRecording} />
-          </div>
-
-          {/* Timer */}
+          <div className="mt-2 mb-6"><WaveformBars active={isRecording} /></div>
           <p className={`mb-6 tabular-nums text-5xl font-bold tracking-tight transition-colors ${
             isRecording ? "text-[#0F172A]" : "text-[#E2E2E0]"
           }`}>
             {fmtTime(elapsed)}
           </p>
-
-          {/* The button */}
           <div className="relative mb-4">
-            {/* Ripple ring — shown during recording */}
-            {isRecording && (
-              <span className="absolute inset-0 rounded-full bg-red-500 animate-ripple" />
-            )}
-
+            {isRecording && <span className="absolute inset-0 rounded-full bg-red-500 animate-ripple" />}
             {phase === "idle" && (
-              <button
-                onClick={startRecording}
+              <button onClick={startRecording}
                 className="relative flex h-24 w-24 items-center justify-center rounded-full bg-voce-indigo shadow-xl transition active:scale-95"
-                aria-label="Start recording"
-              >
+                aria-label="Start recording">
                 <Mic className="h-9 w-9 text-white" />
               </button>
             )}
-
             {isRecording && (
-              <button
-                onClick={stopRecording}
+              <button onClick={stopRecording}
                 className="relative flex h-24 w-24 items-center justify-center rounded-full bg-red-500 shadow-xl transition active:scale-95"
-                aria-label="Stop recording"
-              >
+                aria-label="Stop recording">
                 <Square className="h-8 w-8 fill-white text-white" />
               </button>
             )}
-
             {phase === "processing" && (
               <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#F4F4F2]">
                 <Loader2 className="h-9 w-9 animate-spin text-voce-indigo" />
               </div>
             )}
           </div>
-
-          {/* Label below button */}
           <p className="text-sm font-medium text-[#94A3B8]">
-            {phase === "idle"       && "Tap to record"}
-            {isRecording            && "Tap to stop"}
+            {phase === "idle" && "Tap to record"}
+            {isRecording      && "Tap to stop"}
             {phase === "processing" && stepMsg}
           </p>
         </>
       )}
 
-      {/* ── Audio player (visible once we have a blob) ── */}
       {audioBlob && phase === "done" && (
         <div className="w-full mt-2 mb-2">
           <AudioPlayer blob={audioBlob} />
         </div>
       )}
 
-      {/* ── Error ── */}
       {error && (
         <div className="mt-4 w-full flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
           <X className="mt-0.5 h-4 w-4 shrink-0" />
@@ -485,15 +474,9 @@ function VoiceTab() {
         </div>
       )}
 
-      {/* ── Results ── */}
       {result && phase === "done" && (
         <div className="w-full">
-          <ResultsCard
-            result={result}
-            saveState={saveState}
-            onSave={handleSave}
-            onReset={reset}
-          />
+          <ResultsCard result={result} saveState={saveState} onSave={handleSave} onReset={reset} />
         </div>
       )}
     </div>
@@ -529,13 +512,12 @@ function PhotoTab() {
       const res  = await fetch("/api/analyze-image", { method: "POST", body: fd });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      // map analyze-image response (keyIdeas → ideas) to unified Analysis shape
       const analysis: Analysis = {
-        title:   data.title   ?? "Handwritten note",
+        title:   data.title    ?? "Handwritten note",
         ideas:   data.keyIdeas ?? data.ideas ?? [],
-        themes:  data.themes  ?? [],
-        tone:    data.tone    ?? "",
-        phrases: data.phrases ?? [],
+        themes:  data.themes   ?? [],
+        tone:    data.tone     ?? "",
+        phrases: data.phrases  ?? [],
       };
       setResult({ transcript: data.transcript ?? "", analysis });
       setPhase("done");
@@ -545,11 +527,11 @@ function PhotoTab() {
     }
   }
 
-  async function handleSave(editedThemes: string[]) {
+  async function handleSave(edits: NoteEdits) {
     if (!result) return;
     setSave("saving");
     try {
-      await saveNote(result, "photo", editedThemes);
+      await saveNote(result, "photo", edits);
       setSave("saved");
     } catch (err) {
       setError(errMsg(err)); setSave("idle");
@@ -561,6 +543,8 @@ function PhotoTab() {
     setSave("idle"); setError(null); setPhase("idle");
     if (inputRef.current) inputRef.current.value = "";
   }
+
+  if (saveState === "saved") return <SavedScreen onRecordAnother={reset} />;
 
   return (
     <div>
@@ -578,7 +562,8 @@ function PhotoTab() {
             <p className="text-sm font-medium text-[#0F172A]">Photo of handwritten notes</p>
             <p className="mt-1 text-xs text-[#94A3B8]">Tap to open camera roll · JPG, PNG, WebP</p>
           </div>
-          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+          <input ref={inputRef} type="file" accept="image/*" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
         </div>
       ) : (
         <div className="relative overflow-hidden rounded-2xl border border-[#E2E2E0] bg-white">
@@ -592,11 +577,8 @@ function PhotoTab() {
 
       {file && !result && (
         <div className="mt-4 flex justify-center">
-          <button
-            onClick={extract}
-            disabled={phase === "processing"}
-            className="flex min-h-[44px] items-center gap-2 rounded-xl bg-voce-indigo px-6 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-          >
+          <button onClick={extract} disabled={phase === "processing"}
+            className="flex min-h-[44px] items-center gap-2 rounded-xl bg-voce-indigo px-6 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60">
             {phase === "processing"
               ? <><Loader2 className="h-4 w-4 animate-spin" /> Analysing with Claude…</>
               : <><ImagePlus className="h-4 w-4" /> Extract Ideas</>}
@@ -656,7 +638,6 @@ function ImportTab() {
       const tRes = await fetch("/api/transcribe", { method: "POST", body: fd });
       const { transcript, error: tErr } = await tRes.json();
       if (tErr) throw new Error(tErr);
-
       setStep("Extracting ideas with Claude…");
       const analysis = await analyzeTranscript(transcript);
       setResult({ transcript, analysis });
@@ -666,11 +647,11 @@ function ImportTab() {
     }
   }
 
-  async function handleSave(editedThemes: string[]) {
+  async function handleSave(edits: NoteEdits) {
     if (!result) return;
     setSave("saving");
     try {
-      await saveNote(result, mode === "text" ? "text" : "voice", editedThemes);
+      await saveNote(result, mode === "text" ? "text" : "voice", edits);
       setSave("saved");
     } catch (err) {
       setError(errMsg(err)); setSave("idle");
@@ -683,9 +664,10 @@ function ImportTab() {
     if (audioInputRef.current) audioInputRef.current.value = "";
   }
 
+  if (saveState === "saved") return <SavedScreen onRecordAnother={reset} />;
+
   return (
     <div className="space-y-5">
-      {/* Mode toggle */}
       {phase === "idle" && !result && (
         <div className="flex rounded-xl bg-[#F4F4F2] p-1">
           {(["text", "audio"] as ImportMode[]).map((m) => (
@@ -700,26 +682,18 @@ function ImportTab() {
         </div>
       )}
 
-      {/* Text input */}
       {mode === "text" && phase !== "done" && (
         <div>
           <label className="mb-2 block text-sm font-medium text-[#0F172A]">
             Paste old captions, journal entries, or notes
           </label>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={8}
+          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8}
             placeholder="Paste any text here — old posts, journal entries, meeting notes, brain dumps…"
-            className="w-full rounded-xl border border-[#E2E2E0] bg-white px-4 py-3 text-sm text-[#0F172A] placeholder:text-[#94A3B8] outline-none transition focus:border-voce-indigo focus:ring-2 focus:ring-voce-indigo/20 resize-none"
-          />
+            className="w-full rounded-xl border border-[#E2E2E0] bg-white px-4 py-3 text-sm text-[#0F172A] placeholder:text-[#94A3B8] outline-none transition focus:border-voce-indigo focus:ring-2 focus:ring-voce-indigo/20 resize-none" />
           {text.trim() && (
             <div className="mt-3 flex justify-end">
-              <button
-                onClick={processText}
-                disabled={phase === "processing"}
-                className="flex min-h-[44px] items-center gap-2 rounded-xl bg-voce-indigo px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-              >
+              <button onClick={processText} disabled={phase === "processing"}
+                className="flex min-h-[44px] items-center gap-2 rounded-xl bg-voce-indigo px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60">
                 {phase === "processing"
                   ? <><Loader2 className="h-4 w-4 animate-spin" />{stepMsg}</>
                   : <><Upload className="h-4 w-4" /> Extract Ideas</>}
@@ -729,16 +703,11 @@ function ImportTab() {
         </div>
       )}
 
-      {/* Audio file input */}
       {mode === "audio" && phase !== "done" && (
         <div>
-          <label className="mb-2 block text-sm font-medium text-[#0F172A]">
-            Upload an old voice memo
-          </label>
-          <div
-            onClick={() => audioInputRef.current?.click()}
-            className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-[#E2E2E0] bg-white px-8 py-12 transition hover:border-voce-indigo hover:bg-voce-indigo/5"
-          >
+          <label className="mb-2 block text-sm font-medium text-[#0F172A]">Upload an old voice memo</label>
+          <div onClick={() => audioInputRef.current?.click()}
+            className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-[#E2E2E0] bg-white px-8 py-12 transition hover:border-voce-indigo hover:bg-voce-indigo/5">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-voce-indigo/10">
               <FileAudio className="h-6 w-6 text-voce-indigo" />
             </div>
@@ -753,22 +722,13 @@ function ImportTab() {
                 <p className="mt-1 text-xs text-[#94A3B8]">Tap to browse your files</p>
               </div>
             )}
-            <input
-              ref={audioInputRef}
-              type="file"
-              accept="audio/*,.mp3,.m4a,.wav,.mp4"
-              className="hidden"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) setAudio(f); }}
-            />
+            <input ref={audioInputRef} type="file" accept="audio/*,.mp3,.m4a,.wav,.mp4" className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) setAudio(f); }} />
           </div>
-
           {audioFile && (
             <div className="mt-3 flex justify-end">
-              <button
-                onClick={processAudio}
-                disabled={phase === "processing"}
-                className="flex min-h-[44px] items-center gap-2 rounded-xl bg-voce-indigo px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-              >
+              <button onClick={processAudio} disabled={phase === "processing"}
+                className="flex min-h-[44px] items-center gap-2 rounded-xl bg-voce-indigo px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60">
                 {phase === "processing"
                   ? <><Loader2 className="h-4 w-4 animate-spin" />{stepMsg}</>
                   : <><FileAudio className="h-4 w-4" /> Transcribe &amp; Extract</>}
@@ -806,32 +766,24 @@ export default function RecordPage() {
 
   return (
     <div>
-      {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-[#0F172A]">Record</h1>
         <p className="mt-1 text-sm text-[#64748B]">Capture your thoughts — we&apos;ll extract the ideas.</p>
       </div>
 
-      {/* Tab switcher — full width, 44px tall */}
       <div className="mb-8 flex rounded-xl bg-[#F4F4F2] p-1">
         {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
+          <button key={id} onClick={() => setTab(id)}
             className={[
               "flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg text-sm font-medium transition-all",
-              tab === id
-                ? "bg-white text-[#0F172A] shadow-sm"
-                : "text-[#94A3B8] hover:text-[#64748B]",
-            ].join(" ")}
-          >
+              tab === id ? "bg-white text-[#0F172A] shadow-sm" : "text-[#94A3B8] hover:text-[#64748B]",
+            ].join(" ")}>
             <Icon className="h-4 w-4" />
             {label}
           </button>
         ))}
       </div>
 
-      {/* Tab content */}
       {tab === "voice"  && <VoiceTab  />}
       {tab === "photo"  && <PhotoTab  />}
       {tab === "import" && <ImportTab />}
