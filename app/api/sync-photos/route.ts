@@ -1,28 +1,37 @@
-import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 export async function POST() {
   try {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
+
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
-          getAll: () => cookieStore.getAll(),
-          setAll: (cookiesToSet) => {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              );
+            } catch {
+              // ignore in read-only contexts
+            }
           },
         },
       }
     );
 
-    const { data: { user }, error: userErr } = await supabase.auth.getUser();
-    console.log("[sync-photos] getUser:", user?.id ?? "null", userErr?.message ?? "");
-    if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    const { data: { user }, error } = await supabase.auth.getUser();
+    console.log("[sync-photos] getUser:", user?.id ?? "null", "error:", error?.message ?? "none");
+
+    if (!user) {
+      return Response.json({ error: "Not authenticated" }, { status: 401 });
+    }
 
     // Fetch tokens from persona_profile
     const { data: profile, error: profileErr } = await supabase
@@ -39,7 +48,7 @@ export async function POST() {
     });
 
     if (profileErr || !profile?.google_access_token) {
-      return NextResponse.json({ error: "Google Photos not connected" }, { status: 400 });
+      return Response.json({ error: "Google Photos not connected" }, { status: 400 });
     }
 
     let accessToken = profile.google_access_token;
@@ -60,7 +69,7 @@ export async function POST() {
       const refreshed = await refreshRes.json();
       console.log("[sync-photos] refresh status:", refreshRes.status, refreshed.error ?? "ok");
       if (!refreshRes.ok) {
-        return NextResponse.json({ error: "Token refresh failed", detail: refreshed.error }, { status: 400 });
+        return Response.json({ error: "Token refresh failed", detail: refreshed.error }, { status: 400 });
       }
       accessToken = refreshed.access_token;
       const newExpiry = new Date(Date.now() + (refreshed.expires_in ?? 3600) * 1000).toISOString();
@@ -93,15 +102,15 @@ export async function POST() {
         break;
       }
 
-      const json     = await res.json();
-      const items    = json.mediaItems ?? [];
+      const json  = await res.json();
+      const items = json.mediaItems ?? [];
       allItems.push(...items);
       pageToken = json.nextPageToken ?? null;
       if (!pageToken || items.length === 0) break;
     }
 
-    console.log("[sync-photos] fetched", allItems.length, "items from Google");
-    if (allItems.length === 0) return NextResponse.json({ synced: 0 });
+    console.log("[sync-photos] fetched", allItems.length, "items");
+    if (allItems.length === 0) return Response.json({ synced: 0 });
 
     // Upsert into photo_library
     const rows = allItems.map(item => ({
@@ -126,9 +135,9 @@ export async function POST() {
       .eq("user_id", user.id);
 
     console.log("[sync-photos] done — synced", rows.length, "items");
-    return NextResponse.json({ synced: rows.length });
+    return Response.json({ synced: rows.length });
   } catch (err) {
     console.error("[sync-photos] unexpected error:", err instanceof Error ? err.message : String(err));
-    return NextResponse.json({ error: "Sync failed" }, { status: 500 });
+    return Response.json({ error: "Sync failed" }, { status: 500 });
   }
 }
