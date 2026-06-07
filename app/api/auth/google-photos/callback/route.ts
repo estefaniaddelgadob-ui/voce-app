@@ -1,13 +1,22 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const APP_URL = "https://voce-app.vercel.app";
+const PRODUCTION_URL = "https://voce-app.vercel.app";
 
 export async function GET(request: Request) {
-  const url = new URL(request.url);
+  const url        = new URL(request.url);
+  const baseUrl    = `${url.protocol}//${url.host}`;
+  const redirectUri = `${baseUrl}/api/auth/google-photos/callback`;
+  // Always redirect back to production after OAuth regardless of which
+  // Vercel URL received the callback, so the session lands in the right place.
+  const APP_URL    = PRODUCTION_URL;
+
   const code  = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const error = url.searchParams.get("error");
+
+  console.log("[callback] baseUrl:", baseUrl);
+  console.log("[callback] redirectUri:", redirectUri);
 
   // Step 1 - log everything received
   console.log("[callback] received:", {
@@ -53,7 +62,7 @@ export async function GET(request: Request) {
         code,
         client_id:     clientId!,
         client_secret: clientSecret!,
-        redirect_uri:  `${APP_URL}/api/auth/google-photos/callback`,
+        redirect_uri:  redirectUri,
         grant_type:    "authorization_code",
       }),
     });
