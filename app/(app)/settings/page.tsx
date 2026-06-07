@@ -169,14 +169,16 @@ function GooglePhotosSection() {
             </div>
           </div>
 
-          {/* Disconnect — full width, bottom of card, only when connected */}
+          {/* Disconnect — small, below status row, only when connected */}
           {isConnected && (
-            <button onClick={handleDisconnect} disabled={disconnecting || syncing}
-              className="mt-4 flex min-h-[40px] w-full items-center justify-center gap-2 rounded-lg border border-red-200 text-sm font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-60">
-              {disconnecting
-                ? <><Loader2 className="h-4 w-4 animate-spin" /> Disconnecting…</>
-                : <><Unlink className="h-4 w-4" /> Disconnect Google Photos</>}
-            </button>
+            <div className="mt-3 flex justify-end">
+              <button onClick={handleDisconnect} disabled={disconnecting || syncing}
+                className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-60">
+                {disconnecting
+                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Disconnecting…</>
+                  : <><Unlink className="h-3.5 w-3.5" /> Disconnect</>}
+              </button>
+            </div>
           )}
           </>
         )}

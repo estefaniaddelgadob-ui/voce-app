@@ -54,6 +54,7 @@ export async function GET(request: Request) {
   console.log("[oauth] redirecting to:", authUrl.slice(0, 100));
   console.log("[oauth] redirect_uri:", redirectUri);
   console.log("[oauth] state created:", !!state);
+  console.log("[oauth] full auth URL scope:", params.get("scope"));
 
   return NextResponse.redirect(authUrl);
 }
