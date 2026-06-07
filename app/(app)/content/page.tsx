@@ -744,6 +744,15 @@ export default function ContentPage() {
   const [photosConnected,  setPhotosConnected]  = useState(false);
   const libraryRef = useRef<HTMLDivElement>(null);
 
+  // Reload drafts whenever the user returns to this browser tab
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === "visible") reloadDrafts();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Reset length to default when content type changes
   useEffect(() => {
     setContentLength(DEFAULT_LENGTH[contentType] ?? "");
@@ -881,44 +890,45 @@ export default function ContentPage() {
         };
       });
 
-      console.log("[generate] saving to content_drafts...", inserts.map(i => ({ user_id: i.user_id, status: i.status, platform: i.platform })));
+      console.log("[generate] inserting with status:", inserts[0]?.status, "count:", inserts.length);
       const { data: saved, error: saveErr } = await supabase
         .from("content_drafts").insert(inserts).select();
       console.log("[generate] saved:", saved?.length ?? 0, "saveErr:", saveErr ? JSON.stringify(saveErr) : null);
 
-      // Verify the rows actually landed in the DB
-      const { data: verify } = await supabase
-        .from("content_drafts")
-        .select("id, status, user_id, created_at")
-        .order("created_at", { ascending: false })
-        .limit(5);
-      console.log("DB verify after save:", verify);
-
       if (saveErr) {
-        // Surface DB error — still show content but warn user
-        setError(`Saved to screen but DB write failed: ${saveErr.message}. Check your content_drafts constraints.`);
-        // Put the variations in drafts as temporary in-memory items
+        // Most common cause: status CHECK constraint doesn't include 'generated'.
+        // Run this SQL in Supabase:
+        //   ALTER TABLE content_drafts DROP CONSTRAINT IF EXISTS content_drafts_status_check;
+        //   ALTER TABLE content_drafts ADD CONSTRAINT content_drafts_status_check
+        //     CHECK (status IN ('draft','generated','approved','scheduled','published'));
+        const sqlHint = saveErr.message.includes("check") || saveErr.message.includes("constraint")
+          ? " ⚠️ Run the status constraint SQL in Supabase (see README or commit notes)."
+          : "";
+        setError(`Content generated but couldn't save to database: ${saveErr.message}.${sqlHint}`);
         const tempDrafts = rawVariations.map((v, i) => {
           const caption = v.full_caption ?? v.content ?? "";
           const body = v.hashtags?.length ? `${caption}\n\n${v.hashtags.join(" ")}` : caption;
           return {
-            id:             `temp-${Date.now()}-${i}`,
-            title:          topic,
+            id:              `temp-${Date.now()}-${i}`,
+            title:           topic,
             body,
-            platform:       audience.platforms?.[0] ?? null,
-            status:         "generated",
-            created_at:     new Date().toISOString(),
+            platform:        audience.platforms?.[0] ?? null,
+            status:          "generated",
+            created_at:      new Date().toISOString(),
             algorithm_note:  v.algorithm_note ?? null,
-            media_type:      matchMedia ? mediaType    : null,
+            media_type:      matchMedia ? mediaType     : null,
             media_year_from: matchMedia ? mediaYearFrom : null,
             media_year_to:   matchMedia ? mediaYearTo   : null,
           } as ContentDraft;
         });
         setDrafts(prev => [...tempDrafts, ...prev]);
       } else if (saved) {
+        // Prepend immediately for instant feedback, then reload from DB to confirm
         setDrafts(prev => [...(saved as ContentDraft[]), ...prev]);
         setGenSuccessMsg(`${saved.length} post${saved.length !== 1 ? "s" : ""} generated ✓`);
         setTimeout(() => setGenSuccessMsg(null), 4000);
+        // Confirm DB state (catches any silent issues)
+        reloadDrafts();
       }
 
       setGenOpen(false);
