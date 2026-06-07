@@ -92,8 +92,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${APP_URL}/settings?error=google_db_failed`);
     }
 
-    console.log("[callback] Success — tokens saved for userId:", userId);
-    return NextResponse.redirect(`${APP_URL}/settings?connected=true`);
+    // Verify tokens actually saved before redirecting
+    const { data: saved } = await admin
+      .from("persona_profile")
+      .select("google_photos_connected, google_access_token")
+      .eq("user_id", userId)
+      .single();
+    console.log("[callback] google_photos_connected:", saved?.google_photos_connected);
+    console.log("[callback] has access token:", !!saved?.google_access_token);
+
+    console.log("[callback] Success — redirecting to settings");
+    return Response.redirect(process.env.NEXT_PUBLIC_APP_URL + "/settings?connected=true");
   } catch (err) {
     console.error("[callback] Unexpected error:", err instanceof Error ? err.message : String(err));
     console.error("[callback] Stack:", err instanceof Error ? err.stack : "no stack");
