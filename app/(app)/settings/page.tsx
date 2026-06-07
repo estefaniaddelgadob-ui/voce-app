@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LogOut, Loader2, CheckCircle2, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase";
@@ -150,7 +150,7 @@ function GooglePhotosSection() {
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 
-export default function SettingsPage() {
+function SettingsContent() {
   return (
     <div>
       <div className="mb-8">
@@ -192,5 +192,15 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="p-6 text-center text-gray-400">Loading settings...</div>
+    }>
+      <SettingsContent />
+    </Suspense>
   );
 }
