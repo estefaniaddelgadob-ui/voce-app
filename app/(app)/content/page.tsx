@@ -135,22 +135,72 @@ function StatusBadge({ status }: { status: string }) {
   return <span className="rounded-full bg-[#F4F4F2] px-2 py-0.5 text-[11px] font-medium text-[#64748B]">Generated</span>;
 }
 
-// ── Google Photos prompt (opens Settings in new tab) ──────────────────────────
+// ── Google Photos prompt / photo grid ─────────────────────────────────────────
 
-function GooglePhotosPrompt() {
+function GooglePhotosPrompt({ photosConnected }: { photosConnected: boolean }) {
+  if (photosConnected) return null;
   return (
-    <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-voce-indigo/10 px-3 py-2.5">
-      <p className="text-xs text-voce-indigo">
+    <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-[#F4F4F2] px-3 py-2.5">
+      <p className="text-xs text-[#64748B]">
         📷 Connect Google Photos in Settings to auto-match your media
       </p>
       <a
         href="/settings"
         target="_blank"
         rel="noopener noreferrer"
-        className="shrink-0 rounded-lg bg-voce-indigo px-2.5 py-1 text-[11px] font-semibold text-white transition hover:opacity-90"
+        className="shrink-0 rounded-lg border border-[#E2E2E0] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#64748B] transition hover:bg-[#F4F4F2]"
       >
-        Open Settings
+        Connect
       </a>
+    </div>
+  );
+}
+
+interface PhotoItem { id: string; url: string; type: string; }
+
+function PhotoGrid({ mediaType }: { mediaType: string | null }) {
+  const [photos,  setPhotos]  = useState<PhotoItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        let query = supabase.from("photo_library")
+          .select("id, url, type")
+          .eq("user_id", user.id)
+          .order("taken_at", { ascending: false })
+          .limit(6);
+        if (mediaType === "photos") query = query.eq("type", "photo") as typeof query;
+        if (mediaType === "videos") query = query.eq("type", "video") as typeof query;
+        const { data } = await query;
+        setPhotos((data as PhotoItem[]) ?? []);
+      } finally { setLoading(false); }
+    }
+    load();
+  }, [mediaType]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loading) return (
+    <div className="mt-3 flex h-10 items-center justify-center">
+      <Loader2 className="h-3.5 w-3.5 animate-spin text-[#94A3B8]" />
+    </div>
+  );
+  if (photos.length === 0) return null;
+
+  return (
+    <div className="mt-3">
+      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">From your library</p>
+      <div className="grid grid-cols-3 gap-1.5">
+        {photos.map(p => (
+          <div key={p.id} className="relative aspect-square overflow-hidden rounded-lg bg-[#F4F4F2]">
+            {p.type === "video"
+              ? <div className="flex h-full items-center justify-center text-xl">🎥</div>
+              : <img src={`${p.url}=w200-h200-c`} alt="" className="h-full w-full object-cover" />}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -209,9 +259,13 @@ function mediaLabel(mediaType: string, isStory: boolean): string {
   return isStory ? "Photo or image" : "Image";
 }
 
-function MediaSuggestions({ body, mediaType = "both" }: { body: string; mediaType?: string | null }) {
+function MediaSuggestions({ body, mediaType = "both", photosConnected = false }: {
+  body: string; mediaType?: string | null; photosConnected?: boolean;
+}) {
   const { type, sections } = parseBody(body);
   const mt = mediaType ?? "both";
+  // Only show PhotoGrid when connected AND media matching was used (mediaType is set)
+  const showGrid = photosConnected && !!mediaType;
 
   if (type === "reel") {
     return (
@@ -226,7 +280,7 @@ function MediaSuggestions({ body, mediaType = "both" }: { body: string; mediaTyp
         <p className="pt-1 text-[11px] text-[#94A3B8]">
           You&apos;ll merge these clips into one Reel in your video editor.
         </p>
-        <GooglePhotosPrompt />
+        {showGrid ? <PhotoGrid mediaType={mt} /> : <GooglePhotosPrompt photosConnected={photosConnected} />}
       </div>
     );
   }
@@ -247,7 +301,7 @@ function MediaSuggestions({ body, mediaType = "both" }: { body: string; mediaTyp
             </p>
           </div>
         ))}
-        <GooglePhotosPrompt />
+        {showGrid ? <PhotoGrid mediaType={mt} /> : <GooglePhotosPrompt photosConnected={photosConnected} />}
       </div>
     );
   }
@@ -268,16 +322,17 @@ function MediaSuggestions({ body, mediaType = "both" }: { body: string; mediaTyp
           </div>
         ))}
       </div>
-      <GooglePhotosPrompt />
+      {showGrid ? <PhotoGrid mediaType={mt} /> : <GooglePhotosPrompt photosConnected={photosConnected} />}
     </div>
   );
 }
 
 // ── Content draft card ─────────────────────────────────────────────────────────
 
-function ContentDraftCard({ draft, onStatusChange }: {
+function ContentDraftCard({ draft, onStatusChange, photosConnected }: {
   draft: ContentDraft;
   onStatusChange: (id: string, status: string) => void;
+  photosConnected: boolean;
 }) {
   const [expanded,     setExpanded]     = useState(false);
   const [body,         setBody]         = useState(draft.body);
@@ -610,7 +665,7 @@ function ContentDraftCard({ draft, onStatusChange }: {
           )}
 
           {/* Media suggestions */}
-          <MediaSuggestions body={body} mediaType={draft.media_type} />
+          <MediaSuggestions body={body} mediaType={draft.media_type} photosConnected={photosConnected} />
 
         </div>
       )}
@@ -645,6 +700,7 @@ export default function ContentPage() {
   const [loadingDrafts,    setLoadingDrafts]    = useState(true);
   const [libraryFilter,    setLibraryFilter]    = useState<LibraryFilter>("all");
   const [genSuccessMsg,    setGenSuccessMsg]    = useState<string | null>(null);
+  const [photosConnected,  setPhotosConnected]  = useState(false);
   const libraryRef = useRef<HTMLDivElement>(null);
 
   // Reset length to default when content type changes
@@ -688,7 +744,7 @@ export default function ContentPage() {
         const [audRes, personaRes, draftsRes] = await Promise.all([
           supabase.from("audiences").select("*")
             .eq("user_id", user.id).order("created_at", { ascending: false }),
-          supabase.from("persona_profile").select("output_language")
+          supabase.from("persona_profile").select("output_language, google_photos_connected")
             .eq("user_id", user.id).single(),
           supabase.from("content_drafts").select("*")
             .eq("user_id", user.id).order("created_at", { ascending: false }),
@@ -697,6 +753,7 @@ export default function ContentPage() {
         setAudiences(list);
         if (list.length > 0) setAudienceId(list[0].id);
         if (personaRes.data?.output_language) setOutputLang(personaRes.data.output_language);
+        setPhotosConnected(personaRes.data?.google_photos_connected === true);
         setDrafts((draftsRes.data as ContentDraft[]) ?? []);
         console.log("[load] drafts count:", draftsRes.data?.length ?? 0);
       } finally {
@@ -1163,6 +1220,7 @@ export default function ContentPage() {
                 key={d.id}
                 draft={d}
                 onStatusChange={handleStatusChange}
+                photosConnected={photosConnected}
               />
             ))}
           </div>
