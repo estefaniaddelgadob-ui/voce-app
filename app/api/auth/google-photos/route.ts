@@ -6,6 +6,9 @@ const REDIRECT_URI = process.env.NEXT_PUBLIC_APP_URL
   : "https://voce-app.vercel.app/api/auth/google-photos/callback";
 
 export async function GET() {
+  console.log("GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID?.slice(0, 30) + "...");
+  console.log("REDIRECT_URI:", process.env.NEXT_PUBLIC_APP_URL + "/api/auth/google-photos/callback");
+
   const clientId = process.env.GOOGLE_CLIENT_ID;
 
   if (!clientId) {
