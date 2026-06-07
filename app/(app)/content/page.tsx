@@ -22,6 +22,7 @@ interface ContentDraft {
   status: string;
   created_at: string;
   algorithm_note: string | null;
+  format_tip: string | null;
   media_type: string | null;
   media_year_from: string | null;
   media_year_to: string | null;
@@ -699,9 +700,16 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected }: 
             </div>
           )}
 
-          {/* Algorithm note */}
-          {draft.algorithm_note && (
-            <p className="text-xs text-voce-indigo">💡 {draft.algorithm_note}</p>
+          {/* Algorithm note + format tip */}
+          {(draft.algorithm_note || draft.format_tip) && (
+            <div className="space-y-1">
+              {draft.algorithm_note && (
+                <p className="text-xs text-voce-indigo">💡 {draft.algorithm_note}</p>
+              )}
+              {draft.format_tip && (
+                <p className="text-xs text-[#64748B]">✏️ {draft.format_tip}</p>
+              )}
+            </div>
           )}
 
           {/* Media suggestions */}
@@ -865,7 +873,7 @@ export default function ContentPage() {
       console.log("[generate] API response:", JSON.stringify(data).slice(0, 400));
       if (data.error) throw new Error(data.error);
 
-      type VariationRaw = { id: number; content?: string; full_caption?: string; hashtags?: string[]; algorithm_note?: string };
+      type VariationRaw = { id: number; content?: string; full_caption?: string; hashtags?: string[]; algorithm_note?: string; format_tip?: string };
       const rawVariations: VariationRaw[] = data.variations ?? [
         { id: 1, full_caption: `HOOK:\n${data.hook ?? ""}\n\nBODY:\n${data.body ?? ""}\n\nCTA:\n${data.cta ?? ""}` },
       ];
@@ -884,6 +892,7 @@ export default function ContentPage() {
           platform:       null,
           status:          "generated",
           algorithm_note:  v.algorithm_note ?? null,
+          format_tip:      v.format_tip      ?? null,
           media_type:      matchMedia ? mediaType : null,
           media_year_from: matchMedia ? mediaYearFrom : null,
           media_year_to:   matchMedia ? mediaYearTo   : null,
@@ -916,6 +925,7 @@ export default function ContentPage() {
             status:          "generated",
             created_at:      new Date().toISOString(),
             algorithm_note:  v.algorithm_note ?? null,
+            format_tip:      v.format_tip     ?? null,
             media_type:      matchMedia ? mediaType     : null,
             media_year_from: matchMedia ? mediaYearFrom : null,
             media_year_to:   matchMedia ? mediaYearTo   : null,
