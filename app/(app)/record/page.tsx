@@ -303,20 +303,30 @@ async function saveNote(
     ? { ...result.analysis, ideas: edits.ideas }
     : result.analysis;
 
-  const response = await supabase.from("thought_notes").insert({
+  const payload = {
     user_id:          user.id,
-    type:             noteType,
+    type:             noteType,                // must be 'voice' | 'photo' | 'text'
     title:            result.analysis.title,
     transcript:       finalTranscript,
     themes:           finalThemes,
-    raw_ideas:        JSON.stringify(finalAnalysis),
+    raw_ideas:        finalAnalysis,           // object, not JSON string — avoids "string did not match pattern" on JSONB columns
     duration_seconds: result.durationSec ?? null,
     status:           "processed",
-  }).select();
+  };
 
-  console.log("[saveNote] Supabase response:", JSON.stringify(response, null, 2));
+  console.log("[saveNote] inserting with type:", payload.type, "| themes:", JSON.stringify(finalThemes), "| duration:", payload.duration_seconds);
 
-  if (response.error) throw response.error;
+  const response = await supabase.from("thought_notes").insert(payload).select();
+
+  if (response.error) {
+    console.error("[saveNote] DB error:", JSON.stringify(response.error, null, 2));
+    // Re-throw with a more readable message including the hint if available
+    const dbErr = response.error as unknown as Record<string, unknown>;
+    const detail = [dbErr.message, dbErr.details, dbErr.hint].filter(Boolean).join(" — ");
+    throw new Error(detail || JSON.stringify(dbErr));
+  }
+
+  console.log("[saveNote] saved successfully, id:", response.data?.[0]?.id);
 }
 
 async function analyzeTranscript(transcript: string): Promise<Analysis> {
@@ -378,9 +388,14 @@ function VoiceTab() {
     await new Promise<void>((res) => { mr.onstop = () => res(); mr.stop(); });
     streamRef.current?.getTracks().forEach((t) => t.stop());
     const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+    const sizeMB = blob.size / 1024 / 1024;
+    console.log("[VoiceTab] audio blob size:", blob.size, "bytes", `(${sizeMB.toFixed(2)} MB)`, "mime:", mr.mimeType);
     setBlob(blob);
     setPhase("processing");
     try {
+      if (blob.size > 24 * 1024 * 1024) {
+        throw new Error(`Recording too large (${sizeMB.toFixed(1)} MB) — Whisper's limit is 25 MB. Try a shorter recording.`);
+      }
       setStepMsg("Transcribing with Whisper…");
       const fd = new FormData();
       fd.append("audio", blob, "recording.webm");
