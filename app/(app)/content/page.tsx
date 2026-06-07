@@ -22,6 +22,7 @@ interface ContentDraft {
   status: string;
   created_at: string;
   algorithm_note: string | null;
+  media_type: string | null;
 }
 
 interface Audience {
@@ -190,8 +191,27 @@ function reelClipDesc(label: string): string {
   return "short, punchy clip showing the concept in action";
 }
 
-function MediaSuggestions({ body }: { body: string }) {
+const PHOTO_SLOTS = [
+  { icon: "📷", kind: "Image suggestion", desc: "A close-up, candid shot — natural light, authentic expression"  },
+  { icon: "📷", kind: "Image suggestion", desc: "A behind-the-scenes moment showing your process or space"        },
+  { icon: "📷", kind: "Image suggestion", desc: "A lifestyle shot that reflects the mood of your caption"         },
+  { icon: "📷", kind: "Image suggestion", desc: "A detail or close-up that reinforces your message"               },
+];
+const VIDEO_SLOTS = [
+  { icon: "🎥", kind: "Video suggestion", desc: "A 3-5 second clip that matches the energy of your caption"       },
+  { icon: "🎥", kind: "Video suggestion", desc: "A talking-head clip or ambient video that adds context"           },
+  { icon: "🎥", kind: "Video suggestion", desc: "A quick transition or reveal that creates curiosity"              },
+  { icon: "🎥", kind: "Video suggestion", desc: "A candid moment that feels authentic and unfiltered"              },
+];
+
+function mediaLabel(mediaType: string, isStory: boolean): string {
+  if (mediaType === "videos") return isStory ? "Short clip" : "Short video clip";
+  return isStory ? "Photo or image" : "Image";
+}
+
+function MediaSuggestions({ body, mediaType = "both" }: { body: string; mediaType?: string | null }) {
   const { type, sections } = parseBody(body);
+  const mt = mediaType ?? "both";
 
   if (type === "reel") {
     return (
@@ -212,7 +232,8 @@ function MediaSuggestions({ body }: { body: string }) {
   }
 
   if (type === "carousel" || type === "story") {
-    const icon = type === "story" ? "🎥" : "📷";
+    const icon  = mt === "videos" ? "🎥" : "📷";
+    const label = mediaLabel(mt, type === "story");
     return (
       <div className="mt-4 space-y-2 rounded-xl bg-[#F8F8FF] p-4">
         <p className="text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">
@@ -222,7 +243,7 @@ function MediaSuggestions({ body }: { body: string }) {
           <div key={i} className="rounded-lg bg-white px-3 py-2.5">
             <p className="text-xs font-semibold text-[#0F172A]">{s.label}</p>
             <p className="mt-0.5 text-xs text-[#64748B]">
-              {icon} A clear, eye-catching {type === "story" ? "video or image" : "image"} to illustrate this {type === "story" ? "frame" : "slide"} — on-brand, minimal background
+              {icon} {label} — on-brand, minimal background, illustrates this {type === "story" ? "frame" : "slide"}
             </p>
           </div>
         ))}
@@ -231,13 +252,10 @@ function MediaSuggestions({ body }: { body: string }) {
     );
   }
 
-  // Caption / LinkedIn default: 2 image + 2 video slots
-  const slots = [
-    { icon: "📷", kind: "Image suggestion", desc: "A close-up, candid shot — natural light, authentic expression" },
-    { icon: "📷", kind: "Image suggestion", desc: "A behind-the-scenes moment showing your process or space"     },
-    { icon: "🎥", kind: "Video suggestion", desc: "A 3-5 second clip that matches the energy of your caption"    },
-    { icon: "🎥", kind: "Video suggestion", desc: "A talking-head clip or ambient video that adds context"        },
-  ];
+  // Caption / LinkedIn: filter slots by mediaType
+  const slots = mt === "photos" ? PHOTO_SLOTS
+    : mt === "videos"  ? VIDEO_SLOTS
+    : [PHOTO_SLOTS[0], PHOTO_SLOTS[1], VIDEO_SLOTS[0], VIDEO_SLOTS[1]];
 
   return (
     <div className="mt-4 rounded-xl bg-[#F8F8FF] p-4">
@@ -592,7 +610,7 @@ function ContentDraftCard({ draft, onStatusChange }: {
           )}
 
           {/* Media suggestions */}
-          <MediaSuggestions body={body} />
+          <MediaSuggestions body={body} mediaType={draft.media_type} />
 
         </div>
       )}
@@ -615,6 +633,7 @@ export default function ContentPage() {
   const [contentLength,    setContentLength]    = useState<string>(DEFAULT_LENGTH["instagram_caption"] ?? "medium");
   const [outputLang,       setOutputLang]       = useState("English");
   const [matchMedia,       setMatchMedia]       = useState(false);
+  const [mediaType,        setMediaType]        = useState<"both" | "photos" | "videos">("both");
   const [mediaYearFrom,    setMediaYearFrom]    = useState(String(THIS_YEAR - 1));
   const [mediaYearTo,      setMediaYearTo]      = useState("present");
   const [generating,       setGenerating]       = useState(false);
@@ -713,8 +732,9 @@ export default function ContentPage() {
       const audience = audiences.find(a => a.id === audienceId);
       if (!audience) throw new Error("Audience not found");
 
+      const mediaLabel = mediaType === "photos" ? "photos" : mediaType === "videos" ? "videos" : "photos and videos";
       const mediaContext = matchMedia
-        ? `Match with photos/videos from ${mediaYearFrom} to ${mediaYearTo === "present" ? "now" : mediaYearTo}`
+        ? `Match with ${mediaLabel} from ${mediaYearFrom} to ${mediaYearTo === "present" ? "now" : mediaYearTo}`
         : null;
 
       console.log("[generate] calling API...");
@@ -730,6 +750,7 @@ export default function ContentPage() {
           length:       contentLength,
           variations,
           toneOverride,
+          mediaType:    matchMedia ? mediaType : null,
           dateContext:  mediaContext,
         }),
       });
@@ -756,6 +777,7 @@ export default function ContentPage() {
           platform:       null,
           status:         "generated",
           algorithm_note: v.algorithm_note ?? null,
+          media_type:     matchMedia ? mediaType : null,
         };
       });
 
@@ -787,6 +809,7 @@ export default function ContentPage() {
             status:         "generated",
             created_at:     new Date().toISOString(),
             algorithm_note: v.algorithm_note ?? null,
+            media_type:     matchMedia ? mediaType : null,
           } as ContentDraft;
         });
         setDrafts(prev => [...tempDrafts, ...prev]);
@@ -1026,7 +1049,30 @@ export default function ContentPage() {
                   </div>
 
                   {matchMedia && (
-                    <div className="mt-4 space-y-3 rounded-xl bg-[#F8F8FF] p-4">
+                    <div className="mt-4 space-y-4 rounded-xl bg-[#F8F8FF] p-4">
+
+                      {/* Media type chips */}
+                      <div>
+                        <p className="mb-2 text-xs font-medium text-[#64748B]">Media type</p>
+                        <div className="flex flex-wrap gap-2">
+                          {([
+                            { id: "both",   label: "📷🎥 Both"         },
+                            { id: "photos", label: "📷 Photos only"    },
+                            { id: "videos", label: "🎥 Videos only"    },
+                          ] as const).map(opt => (
+                            <button key={opt.id} type="button" onClick={() => setMediaType(opt.id)}
+                              className={[
+                                "rounded-full px-3 py-1.5 text-sm font-medium transition",
+                                mediaType === opt.id
+                                  ? "bg-voce-indigo text-white"
+                                  : "border border-[#E2E2E0] text-[#64748B] hover:border-voce-indigo/50",
+                              ].join(" ")}>
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div>
                           <label className="mb-1.5 block text-xs font-medium text-[#64748B]">From year</label>

@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
   try {
     const {
       topic, persona, audience, thoughtNotes,
-      contentType, length, variations, toneOverride, feedbackContext, dateContext,
+      contentType, length, variations, toneOverride, feedbackContext, dateContext, mediaType,
     } = await request.json();
 
     // ── Legacy single-generation path (no variations param) ──────────────────
@@ -121,6 +121,10 @@ Write a ${(audience.primary_platform || "social media")} post. Return ONLY valid
 
     const lengthNote = length ? `${contentType.replace(/_/g, " ")} — ${length}` : contentType.replace(/_/g, " ");
 
+    const mediaTypeNote = mediaType && mediaType !== "both"
+      ? `\nMedia preference: ${mediaType === "photos" ? "suggest image descriptions only — no video clips" : "suggest video clip descriptions only — no static images"}`
+      : "";
+
     const userMessage = `Creator persona:
 ${personaBlock}
 ${samplesBlock}
@@ -133,7 +137,7 @@ ${audienceBlock}
 
 Content type: ${lengthNote}
 Topic: ${topic}
-Output language: ${persona.output_language || "English"}${toneNote}${feedbackNote}${dateNote}
+Output language: ${persona.output_language || "English"}${toneNote}${feedbackNote}${dateNote}${mediaTypeNote}
 
 Generate ${variations} variation(s). Each must be distinctly different (different angle, hook, or opening). Mirror the creator's exact voice — their rhythm, vocabulary, punctuation. Speak directly to this audience's pain points and dreams.`;
 

@@ -116,7 +116,7 @@ function GooglePhotosSection() {
                 </p>
               )}
               {connectError && (
-                <p className="mt-1 text-xs text-red-500">Connection failed — please try again.</p>
+                <p className="mt-1 text-xs text-red-500">Google Photos connection failed — please try again.</p>
               )}
             </div>
             <div className="flex shrink-0 items-center gap-2">
