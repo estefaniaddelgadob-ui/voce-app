@@ -121,6 +121,17 @@ export async function POST() {
       type:            item.mediaMetadata?.video ? "video" : "photo",
     }));
 
+    // Log first item so we can verify column mapping and taken_at format
+    if (rows[0]) {
+      console.log("[sync] inserting sample:", {
+        google_photo_id: rows[0].google_photo_id,
+        url:             rows[0].url?.slice(0, 60) + "…",
+        taken_at:        rows[0].taken_at,
+        type:            rows[0].type,
+      });
+    }
+    console.log("[sync] total rows to upsert:", rows.length, "| photos:", rows.filter(r => r.type === "photo").length, "| videos:", rows.filter(r => r.type === "video").length);
+
     const { error: upsertErr } = await supabase
       .from("photo_library")
       .upsert(rows, { onConflict: "user_id,google_photo_id" });
