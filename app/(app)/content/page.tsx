@@ -184,16 +184,20 @@ function PhotoGrid({ mediaType, yearFrom, yearTo }: {
           ? String(new Date().getFullYear())
           : yearTo;
 
+        console.log("[photos] yearFrom:", start, "yearTo:", end, "type filter:", mediaType);
+
         let query = supabase.from("photo_library")
           .select("id, url, type, taken_at")
           .eq("user_id", user.id)
-          .gte("taken_at", `${start}-01-01`)
-          .lte("taken_at", `${end}-12-31`)
+          .gte("taken_at", `${start}-01-01T00:00:00Z`)
+          .lte("taken_at", `${end}-12-31T23:59:59Z`)
           .order("taken_at", { ascending: false })
           .limit(20);
         if (mediaType === "photos") query = query.eq("type", "photo") as typeof query;
         if (mediaType === "videos") query = query.eq("type", "video") as typeof query;
-        const { data } = await query;
+        const { data, error } = await query;
+
+        console.log("[photos] results:", data?.length ?? 0, "| first taken_at:", data?.[0]?.taken_at ?? "none", "| error:", error?.message ?? "none");
         setPhotos((data as PhotoItem[]) ?? []);
       } finally { setLoading(false); }
     }
@@ -392,6 +396,9 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected }: 
 }) {
   const [expanded,     setExpanded]     = useState(false);
   const [body,         setBody]         = useState(draft.body);
+  const [draftHook,    setDraftHook]    = useState(draft.draft_hook);
+  const [draftBody,    setDraftBody]    = useState(draft.draft_body);
+  const [draftCta,     setDraftCta]     = useState(draft.draft_cta);
   const [editing,      setEditing]      = useState(false);
   const [thumbs,       setThumbs]       = useState<"up" | "down" | null>(null);
   const [feedback,     setFeedback]     = useState<string[]>([]);
@@ -513,6 +520,8 @@ Write a completely different version that addresses these specific issues. ` +
           : "") +
         "Every word must sound like it came from them, no one else.";
 
+      console.log("[regenerate] calling API with feedback:", feedback.join(", "), "| topic:", draft.title);
+
       const res = await fetch("/api/generate-content", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
@@ -528,23 +537,46 @@ Write a completely different version that addresses these specific issues. ` +
         }),
       });
       const data = await res.json();
-      const variation   = data.variations?.[0];
-      const newBody     = variation?.full_caption ?? variation?.content ?? body;
+      console.log("[regenerate] API response:", JSON.stringify(data).slice(0, 300));
+
+      if (data.error) throw new Error(data.error);
+
+      const variation = data.variations?.[0];
+      if (!variation) throw new Error("No variation returned from API");
+
+      // Enforce hashtag limit on regenerated content
+      if (variation.hashtags) {
+        variation.hashtags = variation.hashtags
+          .filter((t: string, i: number, self: string[]) => self.indexOf(t) === i)
+          .slice(0, 5);
+      }
+
+      const newBody = variation.full_caption ?? variation.content ?? body;
+
+      // Update both local state AND the DB
       setBody(newBody);
+      setDraftHook(variation.hook ?? null);
+      setDraftBody(variation.body ?? null);
+      setDraftCta(variation.cta  ?? null);
       setThumbs(null);
       setFeedback([]);
 
-      await supabase.from("content_drafts").update({
+      const { error: updateErr } = await supabase.from("content_drafts").update({
         body:       newBody,
-        draft_hook: variation?.hook ?? null,
-        draft_body: variation?.body ?? null,
-        draft_cta:  variation?.cta  ?? null,
+        draft_hook: variation.hook ?? null,
+        draft_body: variation.body ?? null,
+        draft_cta:  variation.cta  ?? null,
       }).eq("id", draft.id);
+
+      if (updateErr) console.error("[regenerate] DB update error:", updateErr.message);
+      else console.log("[regenerate] saved successfully for draft:", draft.id);
 
       setSaveState("saved");
       setTimeout(() => setSaveState("idle"), 2500);
-    } catch {
-      // keep existing content
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Regeneration failed";
+      console.error("[regenerate] error:", msg);
+      setCardError(msg);
     } finally {
       setRegenerating(false);
     }
@@ -611,22 +643,22 @@ Write a completely different version that addresses these specific issues. ` +
               />
               <p className="mt-1 text-right text-xs text-[#94A3B8]">{wordCount} words</p>
             </div>
-          ) : draft.draft_hook ? (
+          ) : draftHook ? (
             <div className="space-y-4 rounded-xl bg-[#F8F8FF] p-4">
               <div>
                 <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">Hook</p>
-                <p className="text-base font-semibold leading-snug text-[#0F172A]">{draft.draft_hook}</p>
+                <p className="text-base font-semibold leading-snug text-[#0F172A]">{draftHook}</p>
               </div>
-              {draft.draft_body && (
+              {draftBody && (
                 <div>
                   <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">Body</p>
-                  <p className="whitespace-pre-line text-sm leading-relaxed text-[#0F172A]">{draft.draft_body}</p>
+                  <p className="whitespace-pre-line text-sm leading-relaxed text-[#0F172A]">{draftBody}</p>
                 </div>
               )}
-              {draft.draft_cta && (
+              {draftCta && (
                 <div>
                   <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">CTA</p>
-                  <p className="text-sm font-medium text-voce-indigo">{draft.draft_cta}</p>
+                  <p className="text-sm font-medium text-voce-indigo">{draftCta}</p>
                 </div>
               )}
               {hashtags.length > 0 && (
@@ -944,14 +976,22 @@ export default function ContentPage() {
       const rawVariations: VariationRaw[] = data.variations ?? [
         { id: 1, full_caption: `HOOK:\n${data.hook ?? ""}\n\nBODY:\n${data.body ?? ""}\n\nCTA:\n${data.cta ?? ""}` },
       ];
-      console.log("[generate] parsed", rawVariations.length, "variations");
+      console.log("[generate] parsed", rawVariations.length, "variation(s)");
+
+      // Hard-enforce ≤5 unique hashtags regardless of what the AI returns
+      rawVariations.forEach(v => {
+        if (v.hashtags) {
+          v.hashtags = v.hashtags.filter((t, i, self) => self.indexOf(t) === i).slice(0, 5);
+        }
+      });
 
       // Save every variation immediately — surface any DB error visibly
       // platform is intentionally null — the CHECK constraint only allows a fixed list
       // and audience platforms may contain values outside that list (tiktok, facebook, etc.)
       const inserts = rawVariations.map(v => {
-        const caption = v.full_caption ?? v.content ?? "";
-        const body = v.hashtags?.length ? `${caption}\n\n${v.hashtags.join(" ")}` : caption;
+        // Use full_caption directly — it already contains hashtags per the prompt spec.
+        // Do NOT append v.hashtags again or they appear twice.
+        const body = v.full_caption ?? v.content ?? "";
         return {
           user_id:        user.id,
           title:          topic,
@@ -983,8 +1023,7 @@ export default function ContentPage() {
           : "";
         setError(`Content generated but couldn't save to database: ${saveErr.message}.${sqlHint}`);
         const tempDrafts = rawVariations.map((v, i) => {
-          const caption = v.full_caption ?? v.content ?? "";
-          const body = v.hashtags?.length ? `${caption}\n\n${v.hashtags.join(" ")}` : caption;
+          const body = v.full_caption ?? v.content ?? "";
           return {
             id:              `temp-${Date.now()}-${i}`,
             title:           topic,
