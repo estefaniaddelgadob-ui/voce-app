@@ -1,6 +1,56 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+type MediaItem = {
+  id: string;
+  baseUrl: string;
+  mediaMetadata: { creationTime: string; video?: object };
+};
+
+async function fetchMediaPage(
+  accessToken: string,
+  mediaType: "PHOTO" | "VIDEO",
+  pageToken?: string
+): Promise<{ items: MediaItem[]; nextPageToken?: string }> {
+  const body: Record<string, unknown> = {
+    pageSize: 100,
+    filters: { mediaTypeFilter: { mediaTypes: [mediaType] } },
+  };
+  if (pageToken) body.pageToken = pageToken;
+
+  const res = await fetch("https://photoslibrary.googleapis.com/v1/mediaItems:search", {
+    method:  "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body:    JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Google Photos API error ${res.status}: ${errText}`);
+  }
+
+  const json = await res.json();
+  return { items: json.mediaItems ?? [], nextPageToken: json.nextPageToken };
+}
+
+async function fetchAllMedia(
+  accessToken: string,
+  mediaType: "PHOTO" | "VIDEO",
+  limit: number
+): Promise<MediaItem[]> {
+  const all: MediaItem[] = [];
+  let pageToken: string | undefined;
+
+  while (all.length < limit) {
+    const { items, nextPageToken } = await fetchMediaPage(accessToken, mediaType, pageToken);
+    all.push(...items);
+    if (!nextPageToken || items.length === 0) break;
+    pageToken = nextPageToken;
+  }
+
+  return all.slice(0, limit);
+}
+
 export async function POST() {
   try {
     const cookieStore = await cookies();
@@ -10,17 +60,13 @@ export async function POST() {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll(cookiesToSet) {
+          getAll: () => cookieStore.getAll(),
+          setAll: (cookiesToSet) => {
             try {
               cookiesToSet.forEach(({ name, value, options }) =>
                 cookieStore.set(name, value, options)
               );
-            } catch {
-              // ignore in read-only contexts
-            }
+            } catch { /* ignore in read-only contexts */ }
           },
         },
       }
@@ -28,12 +74,8 @@ export async function POST() {
 
     const { data: { user }, error } = await supabase.auth.getUser();
     console.log("[sync-photos] getUser:", user?.id ?? "null", "error:", error?.message ?? "none");
+    if (!user) return Response.json({ error: "Not authenticated" }, { status: 401 });
 
-    if (!user) {
-      return Response.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
-    // Fetch tokens from persona_profile
     const { data: profile, error: profileErr } = await supabase
       .from("persona_profile")
       .select("google_access_token, google_refresh_token, google_token_expiry")
@@ -78,41 +120,21 @@ export async function POST() {
         .eq("user_id", user.id);
     }
 
-    // Fetch up to 500 items from Google Photos API
+    // Google Photos API only allows ONE media type per filter request — fetch separately
     console.log("[sync-photos] fetching photos from Google...");
-    const allItems: { id: string; baseUrl: string; mediaMetadata: { creationTime: string; video?: object } }[] = [];
-    let pageToken: string | null = null;
+    const [photos, videos] = await Promise.all([
+      fetchAllMedia(accessToken, "PHOTO", 350),
+      fetchAllMedia(accessToken, "VIDEO", 150),
+    ]);
 
-    while (allItems.length < 500) {
-      const body: Record<string, unknown> = {
-        pageSize: 100,
-        filters:  { mediaTypeFilter: { mediaTypes: ["PHOTO", "VIDEO"] } },
-      };
-      if (pageToken) body.pageToken = pageToken;
+    console.log("[sync] photos fetched:", photos.length);
+    console.log("[sync] videos fetched:", videos.length);
 
-      const res = await fetch("https://photoslibrary.googleapis.com/v1/mediaItems:search", {
-        method:  "POST",
-        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-        body:    JSON.stringify(body),
-      });
+    const allItems = [...photos, ...videos];
+    console.log("[sync] total:", allItems.length);
 
-      if (!res.ok) {
-        const errBody = await res.text();
-        console.error("[sync-photos] Google Photos API error:", res.status, errBody);
-        break;
-      }
-
-      const json  = await res.json();
-      const items = json.mediaItems ?? [];
-      allItems.push(...items);
-      pageToken = json.nextPageToken ?? null;
-      if (!pageToken || items.length === 0) break;
-    }
-
-    console.log("[sync-photos] fetched", allItems.length, "items");
     if (allItems.length === 0) return Response.json({ synced: 0 });
 
-    // Upsert into photo_library
     const rows = allItems.map(item => ({
       user_id:         user.id,
       google_photo_id: item.id,
@@ -121,7 +143,6 @@ export async function POST() {
       type:            item.mediaMetadata?.video ? "video" : "photo",
     }));
 
-    // Log first item so we can verify column mapping and taken_at format
     if (rows[0]) {
       console.log("[sync] inserting sample:", {
         google_photo_id: rows[0].google_photo_id,
@@ -130,7 +151,6 @@ export async function POST() {
         type:            rows[0].type,
       });
     }
-    console.log("[sync] total rows to upsert:", rows.length, "| photos:", rows.filter(r => r.type === "photo").length, "| videos:", rows.filter(r => r.type === "video").length);
 
     const { error: upsertErr } = await supabase
       .from("photo_library")
@@ -149,6 +169,6 @@ export async function POST() {
     return Response.json({ synced: rows.length });
   } catch (err) {
     console.error("[sync-photos] unexpected error:", err instanceof Error ? err.message : String(err));
-    return Response.json({ error: "Sync failed" }, { status: 500 });
+    return Response.json({ error: err instanceof Error ? err.message : "Sync failed" }, { status: 500 });
   }
 }
