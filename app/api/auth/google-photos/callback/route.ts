@@ -22,44 +22,36 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const tokenBody = new URLSearchParams({
-      code,
-      client_id:     process.env.GOOGLE_CLIENT_ID     ?? "",
-      client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
-      redirect_uri:  REDIRECT_URI,
-      grant_type:    "authorization_code",
-    });
-
-    console.log("[callback] Sending token request — client_id:", process.env.GOOGLE_CLIENT_ID?.slice(0, 40), "redirect_uri:", REDIRECT_URI);
-
-    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
       method:  "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body:    tokenBody,
+      body: new URLSearchParams({
+        code:          code as string,
+        client_id:     process.env.GOOGLE_CLIENT_ID!,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        redirect_uri:  process.env.NEXT_PUBLIC_APP_URL + "/api/auth/google-photos/callback",
+        grant_type:    "authorization_code",
+      }),
     });
 
-    const responseText = await tokenRes.text();
-    console.log("[callback] Token endpoint HTTP status:", tokenRes.status);
-    console.log("[callback] Token endpoint raw response:", responseText);
+    const tokenData = await tokenResponse.json();
 
-    if (!tokenRes.ok) {
-      console.error("[callback] Token exchange failed — status:", tokenRes.status, "body:", responseText);
-      return NextResponse.redirect(`${APP_URL}/settings?error=google_token_failed`);
+    // Log everything so we can see the exact error
+    console.log("Token exchange status:", tokenResponse.status);
+    console.log("Token exchange response:", JSON.stringify(tokenData));
+    console.log("Redirect URI used:", process.env.NEXT_PUBLIC_APP_URL + "/api/auth/google-photos/callback");
+    console.log("Client ID used:", process.env.GOOGLE_CLIENT_ID?.slice(0, 40));
+
+    if (!tokenResponse.ok) {
+      console.error("Token exchange failed:", tokenData);
+      return Response.redirect(process.env.NEXT_PUBLIC_APP_URL + "/settings?error=google_auth_failed");
     }
 
-    let tokens: { access_token?: string; refresh_token?: string; expires_in?: number };
-    try {
-      tokens = JSON.parse(responseText);
-    } catch {
-      console.error("[callback] Failed to parse token response as JSON:", responseText);
-      return NextResponse.redirect(`${APP_URL}/settings?error=google_token_failed`);
-    }
-
-    const { access_token, refresh_token, expires_in } = tokens;
+    const { access_token, refresh_token, expires_in } = tokenData;
     console.log("[callback] access_token present:", !!access_token, "| refresh_token present:", !!refresh_token);
 
     if (!access_token) {
-      console.error("[callback] No access_token in response — full tokens:", JSON.stringify(tokens));
+      console.error("[callback] No access_token in response — full tokenData:", JSON.stringify(tokenData));
       return NextResponse.redirect(`${APP_URL}/settings?error=google_token_failed`);
     }
 
