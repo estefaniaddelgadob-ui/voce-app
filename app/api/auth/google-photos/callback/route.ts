@@ -101,8 +101,8 @@ export async function GET(request: NextRequest) {
     console.log("[callback] google_photos_connected:", saved?.google_photos_connected);
     console.log("[callback] has access token:", !!saved?.google_access_token);
 
-    console.log("[callback] Success — redirecting to settings");
-    return Response.redirect(process.env.NEXT_PUBLIC_APP_URL + "/settings?connected=true");
+    console.log("[callback] Success — redirecting to settings, APP_URL:", APP_URL);
+    return NextResponse.redirect(`${APP_URL}/settings?connected=true`);
   } catch (err) {
     console.error("[callback] Unexpected error:", err instanceof Error ? err.message : String(err));
     console.error("[callback] Stack:", err instanceof Error ? err.stack : "no stack");
