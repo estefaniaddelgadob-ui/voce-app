@@ -12,7 +12,7 @@ import { createClient } from "@/lib/supabase";
 
 type ContentType   = "instagram_caption" | "carousel_script" | "reel_script" | "story_sequence" | "linkedin_post";
 type ToneOverride  = "persona" | "casual" | "bold" | "vulnerable" | "educational";
-type LibraryFilter = "all" | "generated" | "approved" | "published";
+type LibraryFilter = "all" | "generated" | "approved" | "scheduled" | "published";
 
 interface ContentDraft {
   id: string;
@@ -21,6 +21,7 @@ interface ContentDraft {
   platform: string | null;
   status: string;
   created_at: string;
+  algorithm_note: string | null;
 }
 
 interface Audience {
@@ -68,8 +69,41 @@ const LIBRARY_TABS: { id: LibraryFilter; label: string }[] = [
   { id: "all",       label: "All"       },
   { id: "generated", label: "Generated" },
   { id: "approved",  label: "Approved"  },
+  { id: "scheduled", label: "Scheduled" },
   { id: "published", label: "Published" },
 ];
+
+const LENGTH_OPTIONS: Partial<Record<ContentType, { id: string; label: string; tip: string }[]>> = {
+  instagram_caption: [
+    { id: "short",  label: "Short",     tip: "50–100 words — best for reach."          },
+    { id: "medium", label: "Medium",    tip: "100–200 words — storytelling sweet spot." },
+    { id: "long",   label: "Long",      tip: "200–300 words — great for saves."         },
+  ],
+  carousel_script: [
+    { id: "3",  label: "3 slides",  tip: "Quick and punchy — best for reach."    },
+    { id: "5",  label: "5 slides",  tip: "Most popular carousel format."         },
+    { id: "7",  label: "7 slides",  tip: "Deeper value. More saves."             },
+    { id: "10", label: "10 slides", tip: "Educational deep-dives."               },
+  ],
+  reel_script: [
+    { id: "7s",  label: "7s",  tip: "Max reach — hook only."              },
+    { id: "15s", label: "15s", tip: "Best for reach + saves. (recommended)" },
+    { id: "30s", label: "30s", tip: "Story with a clear arc."              },
+    { id: "60s", label: "60s", tip: "Tutorial or deeper storytelling."     },
+  ],
+  story_sequence: [
+    { id: "3", label: "3 slides", tip: "Teaser or quick tip."   },
+    { id: "5", label: "5 slides", tip: "Balanced story arc."    },
+    { id: "7", label: "7 slides", tip: "Detailed walkthrough."  },
+  ],
+};
+
+const DEFAULT_LENGTH: Partial<Record<ContentType, string>> = {
+  instagram_caption: "medium",
+  carousel_script:   "5",
+  reel_script:       "15s",
+  story_sequence:    "5",
+};
 
 const GENERATING_MESSAGES = [
   "Thinking in your voice...",
@@ -94,21 +128,10 @@ function fmtDate(iso: string) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === "approved") return (
-    <span className="rounded-full bg-voce-indigo/10 px-2 py-0.5 text-[11px] font-medium text-voce-indigo">
-      Approved
-    </span>
-  );
-  if (status === "published") return (
-    <span className="rounded-full bg-voce-teal/10 px-2 py-0.5 text-[11px] font-medium text-voce-teal">
-      Published
-    </span>
-  );
-  return (
-    <span className="rounded-full bg-[#F4F4F2] px-2 py-0.5 text-[11px] font-medium text-[#64748B]">
-      Generated
-    </span>
-  );
+  if (status === "approved")  return <span className="rounded-full bg-voce-indigo/10 px-2 py-0.5 text-[11px] font-medium text-voce-indigo">Approved</span>;
+  if (status === "scheduled") return <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">Scheduled</span>;
+  if (status === "published") return <span className="rounded-full bg-voce-teal/10 px-2 py-0.5 text-[11px] font-medium text-voce-teal">Published</span>;
+  return <span className="rounded-full bg-[#F4F4F2] px-2 py-0.5 text-[11px] font-medium text-[#64748B]">Generated</span>;
 }
 
 // ── Google Photos prompt (opens Settings in new tab) ──────────────────────────
@@ -563,6 +586,11 @@ function ContentDraftCard({ draft, onStatusChange }: {
             </div>
           )}
 
+          {/* Algorithm note */}
+          {draft.algorithm_note && (
+            <p className="text-xs text-voce-indigo">💡 {draft.algorithm_note}</p>
+          )}
+
           {/* Media suggestions */}
           <MediaSuggestions body={body} />
 
@@ -584,6 +612,7 @@ export default function ContentPage() {
   const [topic,            setTopic]            = useState("");
   const [variations,       setVariations]       = useState(3);
   const [toneOverride,     setToneOverride]     = useState<ToneOverride>("persona");
+  const [contentLength,    setContentLength]    = useState<string>(DEFAULT_LENGTH["instagram_caption"] ?? "medium");
   const [outputLang,       setOutputLang]       = useState("English");
   const [matchMedia,       setMatchMedia]       = useState(false);
   const [mediaYearFrom,    setMediaYearFrom]    = useState(String(THIS_YEAR - 1));
@@ -598,6 +627,11 @@ export default function ContentPage() {
   const [libraryFilter,    setLibraryFilter]    = useState<LibraryFilter>("all");
   const [genSuccessMsg,    setGenSuccessMsg]    = useState<string | null>(null);
   const libraryRef = useRef<HTMLDivElement>(null);
+
+  // Reset length to default when content type changes
+  useEffect(() => {
+    setContentLength(DEFAULT_LENGTH[contentType] ?? "");
+  }, [contentType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cycle generating messages
   useEffect(() => {
@@ -693,6 +727,7 @@ export default function ContentPage() {
           audience,
           thoughtNotes: thoughtsRes.data ?? [],
           contentType,
+          length:       contentLength,
           variations,
           toneOverride,
           dateContext:  mediaContext,
@@ -702,21 +737,27 @@ export default function ContentPage() {
       console.log("[generate] API response:", JSON.stringify(data).slice(0, 400));
       if (data.error) throw new Error(data.error);
 
-      const rawVariations: { id: number; content: string }[] = data.variations ?? [
-        { id: 1, content: `HOOK:\n${data.hook ?? ""}\n\nBODY:\n${data.body ?? ""}\n\nCTA:\n${data.cta ?? ""}` },
+      type VariationRaw = { id: number; content?: string; full_caption?: string; hashtags?: string[]; algorithm_note?: string };
+      const rawVariations: VariationRaw[] = data.variations ?? [
+        { id: 1, full_caption: `HOOK:\n${data.hook ?? ""}\n\nBODY:\n${data.body ?? ""}\n\nCTA:\n${data.cta ?? ""}` },
       ];
       console.log("[generate] parsed", rawVariations.length, "variations");
 
       // Save every variation immediately — surface any DB error visibly
       // platform is intentionally null — the CHECK constraint only allows a fixed list
       // and audience platforms may contain values outside that list (tiktok, facebook, etc.)
-      const inserts = rawVariations.map(v => ({
-        user_id:  user.id,
-        title:    topic,
-        body:     v.content,
-        platform: null,
-        status:   "generated",
-      }));
+      const inserts = rawVariations.map(v => {
+        const caption = v.full_caption ?? v.content ?? "";
+        const body = v.hashtags?.length ? `${caption}\n\n${v.hashtags.join(" ")}` : caption;
+        return {
+          user_id:        user.id,
+          title:          topic,
+          body,
+          platform:       null,
+          status:         "generated",
+          algorithm_note: v.algorithm_note ?? null,
+        };
+      });
 
       console.log("[generate] saving to content_drafts...", inserts.map(i => ({ user_id: i.user_id, status: i.status, platform: i.platform })));
       const { data: saved, error: saveErr } = await supabase
@@ -735,14 +776,19 @@ export default function ContentPage() {
         // Surface DB error — still show content but warn user
         setError(`Saved to screen but DB write failed: ${saveErr.message}. Check your content_drafts constraints.`);
         // Put the variations in drafts as temporary in-memory items
-        const tempDrafts = rawVariations.map((v, i) => ({
-          id: `temp-${Date.now()}-${i}`,
-          title: topic,
-          body: v.content,
-          platform: audience.platforms?.[0] ?? null,
-          status: "generated",
-          created_at: new Date().toISOString(),
-        } as ContentDraft));
+        const tempDrafts = rawVariations.map((v, i) => {
+          const caption = v.full_caption ?? v.content ?? "";
+          const body = v.hashtags?.length ? `${caption}\n\n${v.hashtags.join(" ")}` : caption;
+          return {
+            id:             `temp-${Date.now()}-${i}`,
+            title:          topic,
+            body,
+            platform:       audience.platforms?.[0] ?? null,
+            status:         "generated",
+            created_at:     new Date().toISOString(),
+            algorithm_note: v.algorithm_note ?? null,
+          } as ContentDraft;
+        });
         setDrafts(prev => [...tempDrafts, ...prev]);
       } else if (saved) {
         setDrafts(prev => [...(saved as ContentDraft[]), ...prev]);
@@ -774,6 +820,7 @@ export default function ContentPage() {
   const filteredDrafts = drafts.filter(d => {
     if (libraryFilter === "generated") return d.status === "generated";
     if (libraryFilter === "approved")  return d.status === "approved";
+    if (libraryFilter === "scheduled") return d.status === "scheduled";
     if (libraryFilter === "published") return d.status === "published";
     return true; // "all" tab
   });
@@ -837,7 +884,7 @@ export default function ContentPage() {
                     <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
                       <AlertCircle className="h-4 w-4 shrink-0" />
                       No audiences yet.{" "}
-                      <a href="/audience" className="font-semibold underline">Create one first →</a>
+                      <a href="/my-persona" className="font-semibold underline">Create one first →</a>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -847,7 +894,7 @@ export default function ContentPage() {
                       {selectedAudience?.description && (
                         <p className="px-1 text-xs text-[#94A3B8]">{selectedAudience.description}</p>
                       )}
-                      <a href="/audience"
+                      <a href="/my-persona"
                         className="inline-flex items-center gap-1 text-xs text-voce-indigo hover:underline">
                         <Plus className="h-3 w-3" /> Create new audience
                       </a>
@@ -877,6 +924,28 @@ export default function ContentPage() {
                       ))}
                     </div>
                   </div>
+
+                  {LENGTH_OPTIONS[contentType] && (
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-[#0F172A]">
+                        Length <span className="font-normal text-[#94A3B8]">— choose what performs best</span>
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {LENGTH_OPTIONS[contentType]!.map(opt => (
+                          <button key={opt.id} type="button" onClick={() => setContentLength(opt.id)}
+                            className={[
+                              "flex flex-col items-start rounded-lg border px-3 py-2 text-left transition",
+                              contentLength === opt.id
+                                ? "border-voce-indigo bg-voce-indigo/5"
+                                : "border-[#E2E2E0] text-[#64748B] hover:border-voce-indigo/50",
+                            ].join(" ")}>
+                            <span className={`text-sm font-medium ${contentLength === opt.id ? "text-voce-indigo" : ""}`}>{opt.label}</span>
+                            <span className="mt-0.5 text-[10px] text-[#94A3B8]">{opt.tip}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-[#0F172A]">

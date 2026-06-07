@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Home, Mic, Sparkles, Users, FileText,
+  Home, Mic, Sparkles, FileText, Calendar,
   Settings, LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -13,11 +13,11 @@ import { createClient } from "@/lib/supabase";
 // ── Shared nav items ───────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
-  { label: "Home",     href: "/dashboard",  icon: Home      },
-  { label: "Audience", href: "/audience",   icon: Users     },
-  { label: "Persona",  href: "/my-persona", icon: Sparkles  },
-  { label: "Record",   href: "/record",     icon: Mic       },
-  { label: "Content",  href: "/content",    icon: FileText  },
+  { label: "Home",     href: "/dashboard",  icon: Home     },
+  { label: "Persona",  href: "/my-persona", icon: Sparkles },
+  { label: "Record",   href: "/record",     icon: Mic      },
+  { label: "Content",  href: "/content",    icon: FileText },
+  { label: "Schedule", href: "/schedule",   icon: Calendar },
 ] as const;
 
 // ── Active-path helper ─────────────────────────────────────────────────────────
