@@ -4,6 +4,11 @@ import { NextResponse, type NextRequest } from "next/server";
 const SUPABASE_COOKIE = "sb-yimkcfmrqzemgqunspfh-auth-token";
 
 export function middleware(request: NextRequest) {
+  // Always bypass API routes
+  if (request.nextUrl.pathname.startsWith("/api")) {
+    return NextResponse.next();
+  }
+
   const { pathname } = request.nextUrl;
 
   const isAuthRoute =
@@ -33,6 +38,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon\\.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icons|api|.*\\..*).*)",
   ],
 };
