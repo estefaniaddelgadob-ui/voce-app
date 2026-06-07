@@ -124,6 +124,7 @@ function GooglePhotosSection() {
             <Loader2 className="h-4 w-4 animate-spin" /> Loading…
           </div>
         ) : (
+          <>
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-medium text-[#0F172A]">Google Photos</p>
@@ -146,7 +147,7 @@ function GooglePhotosSection() {
                 <p className="mt-1 text-xs text-red-500">Google Photos connection failed — please try again.</p>
               )}
             </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               {isConnected && (
                 <button onClick={handleSync} disabled={syncing || disconnecting}
                   className="flex items-center gap-1.5 rounded-lg border border-[#E2E2E0] px-3 py-1.5 text-xs font-medium text-[#64748B] transition hover:bg-[#F4F4F2] disabled:opacity-60">
@@ -156,17 +157,9 @@ function GooglePhotosSection() {
                 </button>
               )}
               {isConnected ? (
-                <>
-                  <span className="flex items-center gap-1.5 rounded-lg bg-voce-teal/10 px-3 py-1.5 text-xs font-medium text-voce-teal">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Connected
-                  </span>
-                  <button onClick={handleDisconnect} disabled={disconnecting || syncing}
-                    className="flex items-center gap-1.5 rounded-lg border border-[#E2E2E0] px-3 py-1.5 text-xs font-medium text-red-500 transition hover:bg-red-50 hover:border-red-200 disabled:opacity-60">
-                    {disconnecting
-                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Disconnecting…</>
-                      : <><Unlink className="h-3.5 w-3.5" /> Disconnect</>}
-                  </button>
-                </>
+                <span className="flex items-center gap-1.5 rounded-lg bg-voce-teal/10 px-3 py-1.5 text-xs font-medium text-voce-teal">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Connected
+                </span>
               ) : (
                 <a href="/api/auth/google-photos"
                   className="rounded-lg bg-voce-indigo px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-90">
@@ -175,6 +168,17 @@ function GooglePhotosSection() {
               )}
             </div>
           </div>
+
+          {/* Disconnect — full width, bottom of card, only when connected */}
+          {isConnected && (
+            <button onClick={handleDisconnect} disabled={disconnecting || syncing}
+              className="mt-4 flex min-h-[40px] w-full items-center justify-center gap-2 rounded-lg border border-red-200 text-sm font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-60">
+              {disconnecting
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Disconnecting…</>
+                : <><Unlink className="h-4 w-4" /> Disconnect Google Photos</>}
+            </button>
+          )}
+          </>
         )}
         {syncMsg && <p className="mt-3 text-xs text-voce-teal">{syncMsg}</p>}
         {syncErr && <p className="mt-3 text-xs text-red-500">{syncErr}</p>}
