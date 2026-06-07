@@ -40,19 +40,13 @@ export async function GET(request: Request) {
 
   const state = Buffer.from(JSON.stringify({ userId: user.id })).toString("base64");
 
-  const scope = [
-    "https://www.googleapis.com/auth/photoslibrary.readonly",
-    "https://www.googleapis.com/auth/photoslibrary.readonly.originals",
-  ].join(" ");
-
   const params = new URLSearchParams({
-    client_id:              clientId,
-    redirect_uri:           redirectUri,
-    response_type:          "code",
-    scope,
-    access_type:            "offline",
-    prompt:                 "consent",
-    include_granted_scopes: "false",
+    client_id:     clientId,
+    redirect_uri:  redirectUri,
+    response_type: "code",
+    scope:         "https://www.googleapis.com/auth/photoslibrary.readonly",
+    access_type:   "offline",
+    prompt:        "consent",
     state,
   });
 
