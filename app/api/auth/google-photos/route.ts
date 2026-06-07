@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 
 export async function GET(request: Request) {
   const requestUrl  = new URL(request.url);
@@ -16,13 +17,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "GOOGLE_CLIENT_ID not configured" }, { status: 500 });
   }
 
-  // Get current user to encode userId in the state param.
-  // The callback receives no session cookie, so state is the only
-  // way to know which user to save tokens for.
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // createBrowserClient (the default createClient) reads from localStorage —
+  // it returns null in API routes. Use createServerClient with cookies instead.
+  const cookieStore = cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get: (name) => cookieStore.get(name)?.value,
+      },
+    }
+  );
+
+  const { data: { user }, error: userErr } = await supabase.auth.getUser();
+  console.log("[oauth] getUser result — user:", user?.id ?? "null", "| error:", userErr?.message ?? "none");
 
   if (!user) {
+    console.error("[oauth] No user session — redirecting to login. This means the session cookie was not readable.");
     return NextResponse.redirect(`${baseUrl}/login`);
   }
 
@@ -38,5 +50,10 @@ export async function GET(request: Request) {
     state,
   });
 
-  return NextResponse.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+  console.log("[oauth] redirecting to:", authUrl.slice(0, 100));
+  console.log("[oauth] redirect_uri:", redirectUri);
+  console.log("[oauth] state created:", !!state);
+
+  return NextResponse.redirect(authUrl);
 }
