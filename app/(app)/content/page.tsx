@@ -12,7 +12,7 @@ import { createClient } from "@/lib/supabase";
 
 type ContentType   = "instagram_caption" | "carousel_script" | "reel_script" | "story_sequence" | "linkedin_post";
 type ToneOverride  = "persona" | "casual" | "bold" | "vulnerable" | "educational";
-type LibraryFilter = "all" | "generated" | "approved" | "scheduled" | "published";
+type LibraryFilter = "generated" | "approved" | "scheduled" | "published";
 
 interface ContentDraft {
   id: string;
@@ -23,6 +23,9 @@ interface ContentDraft {
   created_at: string;
   algorithm_note: string | null;
   format_tip: string | null;
+  draft_hook: string | null;
+  draft_body: string | null;
+  draft_cta: string | null;
   media_type: string | null;
   media_year_from: string | null;
   media_year_to: string | null;
@@ -70,7 +73,6 @@ const THIS_YEAR    = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: THIS_YEAR - 2017 }, (_, i) => String(2018 + i));
 
 const LIBRARY_TABS: { id: LibraryFilter; label: string }[] = [
-  { id: "all",       label: "All"       },
   { id: "generated", label: "Generated" },
   { id: "approved",  label: "Approved"  },
   { id: "scheduled", label: "Scheduled" },
@@ -212,9 +214,17 @@ function PhotoGrid({ mediaType, yearFrom, yearTo }: {
       <Loader2 className="h-3.5 w-3.5 animate-spin text-[#94A3B8]" />
     </div>
   );
-  if (photos.length === 0) return (
-    <p className="mt-3 text-xs text-[#94A3B8]">No photos found in your library for this period.</p>
-  );
+  if (photos.length === 0) {
+    const typeLabel = mediaType === "videos" ? "videos" : mediaType === "photos" ? "photos" : "photos or videos";
+    const rangeLabel = yearFrom && yearTo && yearTo !== "present"
+      ? `${yearFrom}–${yearTo}` : yearFrom ? `${yearFrom} onwards` : "the selected period";
+    return (
+      <p className="mt-3 text-xs text-[#94A3B8]">
+        No {typeLabel} found from {rangeLabel} — try a different year range or{" "}
+        <a href="/settings" className="text-voce-indigo underline">sync your library in Settings</a>.
+      </p>
+    );
+  }
 
   return (
     <div className="mt-3">
@@ -398,7 +408,8 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected }: 
   const isApproved  = status === "approved";
   const isPublished = status === "published";
   const wordCount   = body.trim() ? body.trim().split(/\s+/).length : 0;
-  const previewLine = body.split("\n").find(l => l.trim()) ?? body.slice(0, 80);
+  const previewLine = draft.draft_hook ?? body.split("\n").find(l => l.trim()) ?? body.slice(0, 80);
+  const hashtags    = body.match(/#[^\s#]+/g) ?? [];
 
   async function handleSave() {
     if (saveState !== "idle") return;
@@ -483,6 +494,25 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected }: 
         supabase.from("thought_notes").select("title, transcript")
           .eq("user_id", user.id).eq("status", "processed").limit(5),
       ]);
+
+      const feedbackContext =
+        `The creator rejected this content because: ${feedback.join(", ")}
+
+Original rejected content:
+${body}
+
+Write a completely different version that addresses these specific issues. ` +
+        (feedback.includes("Not my voice")
+          ? "Go deeper into their actual speech patterns from the voice notes — use their exact vocabulary and rhythm. "
+          : "") +
+        (feedback.includes("Too formal")
+          ? "Make it rawer and more conversational — less polished, more human. "
+          : "") +
+        (feedback.includes("Too salesy")
+          ? "Pull back the sell entirely, lead with the story and let the value speak. "
+          : "") +
+        "Every word must sound like it came from them, no one else.";
+
       const res = await fetch("/api/generate-content", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
@@ -494,15 +524,25 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected }: 
           contentType:     "instagram_caption",
           variations:      1,
           toneOverride:    "persona",
-          feedbackContext: feedback.join(", "),
+          feedbackContext,
         }),
       });
       const data = await res.json();
-      const newContent = data.variations?.[0]?.content ?? body;
-      setBody(newContent);
+      const variation   = data.variations?.[0];
+      const newBody     = variation?.full_caption ?? variation?.content ?? body;
+      setBody(newBody);
       setThumbs(null);
       setFeedback([]);
-      await supabase.from("content_drafts").update({ body: newContent }).eq("id", draft.id);
+
+      await supabase.from("content_drafts").update({
+        body:       newBody,
+        draft_hook: variation?.hook ?? null,
+        draft_body: variation?.body ?? null,
+        draft_cta:  variation?.cta  ?? null,
+      }).eq("id", draft.id);
+
+      setSaveState("saved");
+      setTimeout(() => setSaveState("idle"), 2500);
     } catch {
       // keep existing content
     } finally {
@@ -559,39 +599,74 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected }: 
             </div>
           )}
 
-          {/* Textarea */}
-          <div>
-            <textarea
-              ref={textareaRef}
-              value={body}
-              onChange={e => setBody(e.target.value)}
-              readOnly={!editing}
-              rows={Math.max(4, body.split("\n").length + 2)}
-              className={`w-full resize-none rounded-xl px-4 py-3 text-sm leading-relaxed text-[#0F172A] outline-none transition ${
-                editing
-                  ? "bg-white ring-2 ring-voce-indigo/20"
-                  : "cursor-default bg-[#F8F8FF]"
-              }`}
-            />
-            <p className="mt-1 text-right text-xs text-[#94A3B8]">{wordCount} words</p>
-          </div>
-
-          {/* Save / Edit / Copy buttons */}
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={handleSave}
-              disabled={saveState === "saving"}
-              className="flex items-center gap-1.5 rounded-lg border border-[#E2E2E0] px-3 py-1.5 text-xs font-medium text-[#64748B] transition hover:border-voce-indigo/50 hover:text-voce-indigo disabled:opacity-60"
-            >
-              {saveState === "saving" ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : saveState === "saved" ? (
-                <><CheckCircle2 className="h-3.5 w-3.5 text-voce-teal" /><span className="text-voce-teal">Saved ✓</span></>
-              ) : (
-                <><Save className="h-3.5 w-3.5" /> Save</>
+          {/* Content display — structured when hook/body/cta available, textarea when editing */}
+          {editing ? (
+            <div>
+              <textarea
+                ref={textareaRef}
+                value={body}
+                onChange={e => setBody(e.target.value)}
+                rows={Math.max(4, body.split("\n").length + 2)}
+                className="w-full resize-none rounded-xl bg-white px-4 py-3 text-sm leading-relaxed text-[#0F172A] outline-none ring-2 ring-voce-indigo/20 transition"
+              />
+              <p className="mt-1 text-right text-xs text-[#94A3B8]">{wordCount} words</p>
+            </div>
+          ) : draft.draft_hook ? (
+            <div className="space-y-4 rounded-xl bg-[#F8F8FF] p-4">
+              <div>
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">Hook</p>
+                <p className="text-base font-semibold leading-snug text-[#0F172A]">{draft.draft_hook}</p>
+              </div>
+              {draft.draft_body && (
+                <div>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">Body</p>
+                  <p className="whitespace-pre-line text-sm leading-relaxed text-[#0F172A]">{draft.draft_body}</p>
+                </div>
               )}
-            </button>
+              {draft.draft_cta && (
+                <div>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">CTA</p>
+                  <p className="text-sm font-medium text-voce-indigo">{draft.draft_cta}</p>
+                </div>
+              )}
+              {hashtags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {hashtags.map(h => (
+                    <span key={h} className="rounded-full bg-[#E8E8FF] px-2.5 py-0.5 text-[11px] font-medium text-voce-indigo">{h}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <textarea
+                ref={textareaRef}
+                value={body}
+                readOnly
+                rows={Math.max(4, body.split("\n").length + 2)}
+                className="w-full cursor-default resize-none rounded-xl bg-[#F8F8FF] px-4 py-3 text-sm leading-relaxed text-[#0F172A] outline-none"
+              />
+              <p className="mt-1 text-right text-xs text-[#94A3B8]">{wordCount} words</p>
+            </div>
+          )}
 
+          {/* Action buttons */}
+          <div className="flex flex-wrap gap-2">
+            {editing && (
+              <button
+                onClick={handleSave}
+                disabled={saveState === "saving"}
+                className="flex items-center gap-1.5 rounded-lg border border-[#E2E2E0] px-3 py-1.5 text-xs font-medium text-[#64748B] transition hover:border-voce-indigo/50 hover:text-voce-indigo disabled:opacity-60"
+              >
+                {saveState === "saving" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : saveState === "saved" ? (
+                  <><CheckCircle2 className="h-3.5 w-3.5 text-voce-teal" /><span className="text-voce-teal">Saved ✓</span></>
+                ) : (
+                  <><Save className="h-3.5 w-3.5" /> Save</>
+                )}
+              </button>
+            )}
             <button
               onClick={toggleEdit}
               className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
@@ -603,7 +678,6 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected }: 
               <Edit2 className="h-3.5 w-3.5" />
               {editing ? "Done editing" : "Edit"}
             </button>
-
             <button
               onClick={handleCopy}
               className="flex items-center gap-1.5 rounded-lg border border-[#E2E2E0] px-3 py-1.5 text-xs font-medium text-[#64748B] transition hover:border-voce-indigo/50 hover:text-voce-indigo"
@@ -614,6 +688,11 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected }: 
                 <><Copy className="h-3.5 w-3.5" /> Copy</>
               )}
             </button>
+            {saveState === "saved" && !editing && (
+              <span className="flex items-center gap-1 text-xs font-medium text-voce-teal">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Regenerated ✓
+              </span>
+            )}
           </div>
 
           {/* ── Status-specific actions ── */}
@@ -700,18 +779,6 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected }: 
             </div>
           )}
 
-          {/* Algorithm note + format tip */}
-          {(draft.algorithm_note || draft.format_tip) && (
-            <div className="space-y-1">
-              {draft.algorithm_note && (
-                <p className="text-xs text-voce-indigo">💡 {draft.algorithm_note}</p>
-              )}
-              {draft.format_tip && (
-                <p className="text-xs text-[#64748B]">✏️ {draft.format_tip}</p>
-              )}
-            </div>
-          )}
-
           {/* Media suggestions */}
           <MediaSuggestions body={body} mediaType={draft.media_type} photosConnected={photosConnected}
             yearFrom={draft.media_year_from} yearTo={draft.media_year_to} />
@@ -747,7 +814,7 @@ export default function ContentPage() {
   // Library
   const [drafts,           setDrafts]           = useState<ContentDraft[]>([]);
   const [loadingDrafts,    setLoadingDrafts]    = useState(true);
-  const [libraryFilter,    setLibraryFilter]    = useState<LibraryFilter>("all");
+  const [libraryFilter,    setLibraryFilter]    = useState<LibraryFilter>("generated");
   const [genSuccessMsg,    setGenSuccessMsg]    = useState<string | null>(null);
   const [photosConnected,  setPhotosConnected]  = useState(false);
   const libraryRef = useRef<HTMLDivElement>(null);
@@ -873,7 +940,7 @@ export default function ContentPage() {
       console.log("[generate] API response:", JSON.stringify(data).slice(0, 400));
       if (data.error) throw new Error(data.error);
 
-      type VariationRaw = { id: number; content?: string; full_caption?: string; hashtags?: string[]; algorithm_note?: string; format_tip?: string };
+      type VariationRaw = { id: number; content?: string; hook?: string; body?: string; cta?: string; full_caption?: string; hashtags?: string[] };
       const rawVariations: VariationRaw[] = data.variations ?? [
         { id: 1, full_caption: `HOOK:\n${data.hook ?? ""}\n\nBODY:\n${data.body ?? ""}\n\nCTA:\n${data.cta ?? ""}` },
       ];
@@ -890,9 +957,10 @@ export default function ContentPage() {
           title:          topic,
           body,
           platform:       null,
-          status:          "generated",
-          algorithm_note:  v.algorithm_note ?? null,
-          format_tip:      v.format_tip      ?? null,
+          status:     "generated",
+          draft_hook: v.hook ?? null,
+          draft_body: v.body ?? null,
+          draft_cta:  v.cta  ?? null,
           media_type:      matchMedia ? mediaType : null,
           media_year_from: matchMedia ? mediaYearFrom : null,
           media_year_to:   matchMedia ? mediaYearTo   : null,
@@ -924,8 +992,9 @@ export default function ContentPage() {
             platform:        audience.platforms?.[0] ?? null,
             status:          "generated",
             created_at:      new Date().toISOString(),
-            algorithm_note:  v.algorithm_note ?? null,
-            format_tip:      v.format_tip     ?? null,
+            draft_hook: v.hook ?? null,
+            draft_body: v.body ?? null,
+            draft_cta:  v.cta  ?? null,
             media_type:      matchMedia ? mediaType     : null,
             media_year_from: matchMedia ? mediaYearFrom : null,
             media_year_to:   matchMedia ? mediaYearTo   : null,
@@ -933,11 +1002,10 @@ export default function ContentPage() {
         });
         setDrafts(prev => [...tempDrafts, ...prev]);
       } else if (saved) {
-        // Prepend immediately for instant feedback, then reload from DB to confirm
         setDrafts(prev => [...(saved as ContentDraft[]), ...prev]);
         setGenSuccessMsg(`${saved.length} post${saved.length !== 1 ? "s" : ""} generated ✓`);
         setTimeout(() => setGenSuccessMsg(null), 4000);
-        // Confirm DB state (catches any silent issues)
+        setLibraryFilter("generated"); // auto-switch so user sees new content immediately
         reloadDrafts();
       }
 
@@ -964,13 +1032,7 @@ export default function ContentPage() {
     setDrafts(prev => prev.filter(d => d.id !== id));
   }
 
-  const filteredDrafts = drafts.filter(d => {
-    if (libraryFilter === "generated") return d.status === "generated";
-    if (libraryFilter === "approved")  return d.status === "approved";
-    if (libraryFilter === "scheduled") return d.status === "scheduled";
-    if (libraryFilter === "published") return d.status === "published";
-    return true; // "all" tab
-  });
+  const filteredDrafts = drafts.filter(d => d.status === libraryFilter);
 
   const selectedAudience = audiences.find(a => a.id === audienceId);
 
@@ -1271,8 +1333,10 @@ export default function ContentPage() {
         </div>
 
         {loadingDrafts ? (
-          <div className="flex h-32 items-center justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-voce-indigo" />
+          <div className="space-y-2">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="h-20 animate-pulse rounded-xl border border-[#E2E2E0] bg-[#F4F4F2]" />
+            ))}
           </div>
         ) : filteredDrafts.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#E2E2E0] py-14 text-center">
