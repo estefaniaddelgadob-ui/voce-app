@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-  Sparkles, Loader2, ThumbsUp, ThumbsDown, RefreshCw,
+  Sparkles, Loader2, ThumbsDown, RefreshCw,
   ChevronDown, ChevronRight, Plus, AlertCircle,
-  Camera, Edit2, CheckCircle2, Copy, Save,
+  Camera, Edit2, CheckCircle2, Copy, Save, Trash2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
@@ -23,6 +23,8 @@ interface ContentDraft {
   created_at: string;
   algorithm_note: string | null;
   media_type: string | null;
+  media_year_from: string | null;
+  media_year_to: string | null;
 }
 
 interface Audience {
@@ -156,11 +158,16 @@ function GooglePhotosPrompt({ photosConnected }: { photosConnected: boolean }) {
   );
 }
 
-interface PhotoItem { id: string; url: string; type: string; }
+interface PhotoItem { id: string; url: string; type: string; taken_at: string | null; }
 
-function PhotoGrid({ mediaType }: { mediaType: string | null }) {
-  const [photos,  setPhotos]  = useState<PhotoItem[]>([]);
-  const [loading, setLoading] = useState(true);
+function PhotoGrid({ mediaType, yearFrom, yearTo }: {
+  mediaType: string | null;
+  yearFrom?: string | null;
+  yearTo?: string | null;
+}) {
+  const [photos,   setPhotos]   = useState<PhotoItem[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     async function load() {
@@ -168,11 +175,19 @@ function PhotoGrid({ mediaType }: { mediaType: string | null }) {
         const supabase = createClient();
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
+
+        const start = yearFrom ?? "2018";
+        const end   = (!yearTo || yearTo === "present")
+          ? String(new Date().getFullYear())
+          : yearTo;
+
         let query = supabase.from("photo_library")
-          .select("id, url, type")
+          .select("id, url, type, taken_at")
           .eq("user_id", user.id)
+          .gte("taken_at", `${start}-01-01`)
+          .lte("taken_at", `${end}-12-31`)
           .order("taken_at", { ascending: false })
-          .limit(6);
+          .limit(20);
         if (mediaType === "photos") query = query.eq("type", "photo") as typeof query;
         if (mediaType === "videos") query = query.eq("type", "video") as typeof query;
         const { data } = await query;
@@ -180,26 +195,54 @@ function PhotoGrid({ mediaType }: { mediaType: string | null }) {
       } finally { setLoading(false); }
     }
     load();
-  }, [mediaType]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mediaType, yearFrom, yearTo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function toggleSelect(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); }
+      else if (next.size < 10) { next.add(id); }
+      return next;
+    });
+  }
 
   if (loading) return (
     <div className="mt-3 flex h-10 items-center justify-center">
       <Loader2 className="h-3.5 w-3.5 animate-spin text-[#94A3B8]" />
     </div>
   );
-  if (photos.length === 0) return null;
+  if (photos.length === 0) return (
+    <p className="mt-3 text-xs text-[#94A3B8]">No photos found in your library for this period.</p>
+  );
 
   return (
     <div className="mt-3">
-      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">From your library</p>
+      <div className="mb-1.5 flex items-center justify-between">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">From your library</p>
+        {selected.size > 0 && (
+          <span className="text-[10px] font-medium text-voce-indigo">{selected.size} selected</span>
+        )}
+      </div>
+      <p className="mb-2 text-[10px] text-[#94A3B8]">Tap to select · up to 10 for carousel</p>
       <div className="grid grid-cols-3 gap-1.5">
-        {photos.map(p => (
-          <div key={p.id} className="relative aspect-square overflow-hidden rounded-lg bg-[#F4F4F2]">
-            {p.type === "video"
-              ? <div className="flex h-full items-center justify-center text-xl">🎥</div>
-              : <img src={`${p.url}=w200-h200-c`} alt="" className="h-full w-full object-cover" />}
-          </div>
-        ))}
+        {photos.map(p => {
+          const isSelected = selected.has(p.id);
+          return (
+            <button key={p.id} type="button" onClick={() => toggleSelect(p.id)}
+              className={`relative aspect-square overflow-hidden rounded-lg transition ${
+                isSelected ? "ring-2 ring-voce-indigo ring-offset-1" : "opacity-90 hover:opacity-100"
+              }`}>
+              {p.type === "video"
+                ? <div className="flex h-full w-full items-center justify-center bg-[#F4F4F2] text-xl">🎥</div>
+                : <img src={`${p.url}=w200-h200-c`} alt="" className="h-full w-full object-cover" />}
+              {isSelected && (
+                <div className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-voce-indigo">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -259,8 +302,9 @@ function mediaLabel(mediaType: string, isStory: boolean): string {
   return isStory ? "Photo or image" : "Image";
 }
 
-function MediaSuggestions({ body, mediaType = "both", photosConnected = false }: {
+function MediaSuggestions({ body, mediaType = "both", photosConnected = false, yearFrom, yearTo }: {
   body: string; mediaType?: string | null; photosConnected?: boolean;
+  yearFrom?: string | null; yearTo?: string | null;
 }) {
   const { type, sections } = parseBody(body);
   const mt = mediaType ?? "both";
@@ -280,7 +324,7 @@ function MediaSuggestions({ body, mediaType = "both", photosConnected = false }:
         <p className="pt-1 text-[11px] text-[#94A3B8]">
           You&apos;ll merge these clips into one Reel in your video editor.
         </p>
-        {showGrid ? <PhotoGrid mediaType={mt} /> : <GooglePhotosPrompt photosConnected={photosConnected} />}
+        {showGrid ? <PhotoGrid mediaType={mt} yearFrom={yearFrom} yearTo={yearTo} /> : <GooglePhotosPrompt photosConnected={photosConnected} />}
       </div>
     );
   }
@@ -301,7 +345,7 @@ function MediaSuggestions({ body, mediaType = "both", photosConnected = false }:
             </p>
           </div>
         ))}
-        {showGrid ? <PhotoGrid mediaType={mt} /> : <GooglePhotosPrompt photosConnected={photosConnected} />}
+        {showGrid ? <PhotoGrid mediaType={mt} yearFrom={yearFrom} yearTo={yearTo} /> : <GooglePhotosPrompt photosConnected={photosConnected} />}
       </div>
     );
   }
@@ -322,16 +366,17 @@ function MediaSuggestions({ body, mediaType = "both", photosConnected = false }:
           </div>
         ))}
       </div>
-      {showGrid ? <PhotoGrid mediaType={mt} /> : <GooglePhotosPrompt photosConnected={photosConnected} />}
+      {showGrid ? <PhotoGrid mediaType={mt} yearFrom={yearFrom} yearTo={yearTo} /> : <GooglePhotosPrompt photosConnected={photosConnected} />}
     </div>
   );
 }
 
 // ── Content draft card ─────────────────────────────────────────────────────────
 
-function ContentDraftCard({ draft, onStatusChange, photosConnected }: {
+function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected }: {
   draft: ContentDraft;
   onStatusChange: (id: string, status: string) => void;
+  onDelete: (id: string) => void;
   photosConnected: boolean;
 }) {
   const [expanded,     setExpanded]     = useState(false);
@@ -346,6 +391,7 @@ function ContentDraftCard({ draft, onStatusChange, photosConnected }: {
   const [saveState,    setSaveState]    = useState<"idle" | "saving" | "saved">("idle");
   const [copyState,    setCopyState]    = useState<"idle" | "copied">("idle");
   const [cardError,    setCardError]    = useState<string | null>(null);
+  const [deleting,     setDeleting]     = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isApproved  = status === "approved";
@@ -379,22 +425,6 @@ function ContentDraftCard({ draft, onStatusChange, photosConnected }: {
     }
   }
 
-  async function quickApprove() {
-    setApproving(true); setCardError(null);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from("content_drafts")
-        .update({ status: "approved" }).eq("id", draft.id);
-      if (error) throw error;
-      setStatus("approved");
-      onStatusChange(draft.id, "approved");
-    } catch (err) {
-      setCardError(err instanceof Error ? err.message : "Approve failed — check status constraint in Supabase");
-    } finally {
-      setApproving(false);
-    }
-  }
-
   async function handleApprove() {
     setApproving(true); setCardError(null);
     try {
@@ -424,6 +454,19 @@ function ContentDraftCard({ draft, onStatusChange, photosConnected }: {
       setCardError(err instanceof Error ? err.message : "Could not mark as published");
     } finally {
       setPublishing(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm("Delete this post? This can't be undone.")) return;
+    setDeleting(true);
+    try {
+      const supabase = createClient();
+      await supabase.from("content_drafts").delete().eq("id", draft.id);
+      onDelete(draft.id);
+    } catch (err) {
+      setCardError(err instanceof Error ? err.message : "Delete failed");
+      setDeleting(false);
     }
   }
 
@@ -600,32 +643,29 @@ function ContentDraftCard({ draft, onStatusChange, photosConnected }: {
 
           {!isApproved && !isPublished && (
             <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Thumbs up — quick approve */}
-                <button onClick={quickApprove} disabled={approving}
-                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition disabled:opacity-60 ${
-                    thumbs === "up"
-                      ? "border-voce-teal bg-voce-teal/10 text-voce-teal"
-                      : "border-[#E2E2E0] text-[#64748B] hover:border-voce-teal/50"
-                  }`}>
-                  {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ThumbsUp className="h-3.5 w-3.5" />}
-                </button>
-
-                {/* Thumbs down */}
-                <button onClick={() => setThumbs(t => t === "down" ? null : "down")}
-                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition ${
-                    thumbs === "down"
-                      ? "border-red-400 bg-red-50 text-red-500"
-                      : "border-[#E2E2E0] text-[#64748B] hover:border-red-300"
-                  }`}>
-                  <ThumbsDown className="h-3.5 w-3.5" />
-                </button>
-
-                {/* Approve */}
-                <button onClick={handleApprove} disabled={approving}
-                  className="ml-auto flex min-h-[36px] items-center gap-1.5 rounded-lg bg-voce-indigo px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60">
-                  {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+              {/* Primary actions — large, clear */}
+              <div className="flex flex-col gap-2">
+                <button onClick={handleApprove} disabled={approving || deleting}
+                  className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-voce-indigo text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60">
+                  {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                   Approve
+                </button>
+                <button onClick={handleDelete} disabled={deleting || approving}
+                  className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl border border-red-300 text-sm font-semibold text-red-500 transition hover:bg-red-50 disabled:opacity-60">
+                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Delete
+                </button>
+              </div>
+
+              {/* Optional feedback / regenerate */}
+              <div className="flex gap-2">
+                <button onClick={() => setThumbs(t => t === "down" ? null : "down")}
+                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition ${
+                    thumbs === "down"
+                      ? "border-red-300 bg-red-50 text-red-500"
+                      : "border-[#E2E2E0] text-[#94A3B8] hover:border-red-200 hover:text-red-400"
+                  }`}>
+                  <ThumbsDown className="h-3 w-3" /> Not right?
                 </button>
               </div>
 
@@ -665,7 +705,8 @@ function ContentDraftCard({ draft, onStatusChange, photosConnected }: {
           )}
 
           {/* Media suggestions */}
-          <MediaSuggestions body={body} mediaType={draft.media_type} photosConnected={photosConnected} />
+          <MediaSuggestions body={body} mediaType={draft.media_type} photosConnected={photosConnected}
+            yearFrom={draft.media_year_from} yearTo={draft.media_year_to} />
 
         </div>
       )}
@@ -832,9 +873,11 @@ export default function ContentPage() {
           title:          topic,
           body,
           platform:       null,
-          status:         "generated",
-          algorithm_note: v.algorithm_note ?? null,
-          media_type:     matchMedia ? mediaType : null,
+          status:          "generated",
+          algorithm_note:  v.algorithm_note ?? null,
+          media_type:      matchMedia ? mediaType : null,
+          media_year_from: matchMedia ? mediaYearFrom : null,
+          media_year_to:   matchMedia ? mediaYearTo   : null,
         };
       });
 
@@ -865,8 +908,10 @@ export default function ContentPage() {
             platform:       audience.platforms?.[0] ?? null,
             status:         "generated",
             created_at:     new Date().toISOString(),
-            algorithm_note: v.algorithm_note ?? null,
-            media_type:     matchMedia ? mediaType : null,
+            algorithm_note:  v.algorithm_note ?? null,
+            media_type:      matchMedia ? mediaType    : null,
+            media_year_from: matchMedia ? mediaYearFrom : null,
+            media_year_to:   matchMedia ? mediaYearTo   : null,
           } as ContentDraft;
         });
         setDrafts(prev => [...tempDrafts, ...prev]);
@@ -891,10 +936,12 @@ export default function ContentPage() {
   // ── Library helpers ────────────────────────────────────────────────────────────
 
   function handleStatusChange(id: string, newStatus: string) {
-    // Update local state immediately for instant UI feedback
     setDrafts(prev => prev.map(d => d.id === id ? { ...d, status: newStatus } : d));
-    // Then refetch from Supabase to confirm DB state and sync tab counts
     reloadDrafts();
+  }
+
+  function handleDeleteDraft(id: string) {
+    setDrafts(prev => prev.filter(d => d.id !== id));
   }
 
   const filteredDrafts = drafts.filter(d => {
@@ -1220,6 +1267,7 @@ export default function ContentPage() {
                 key={d.id}
                 draft={d}
                 onStatusChange={handleStatusChange}
+                onDelete={handleDeleteDraft}
                 photosConnected={photosConnected}
               />
             ))}
