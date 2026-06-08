@@ -12,7 +12,10 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isAuthRoute =
-    pathname.startsWith("/login") || pathname.startsWith("/auth");
+    pathname.startsWith("/login")   ||
+    pathname.startsWith("/auth")    ||
+    pathname.startsWith("/privacy") ||
+    pathname.startsWith("/terms");
 
   const hasSession =
     request.cookies.has(SUPABASE_COOKIE) ||
