@@ -96,15 +96,25 @@ Write a ${(audience.primary_platform || "social media")} post. Return ONLY valid
             persona.tone_description   ? `Voice: ${persona.tone_description}` : "",
             persona.beliefs            ? `Beliefs: ${persona.beliefs}` : "",
           ].filter(Boolean).join("\n"),
-      persona.niche          ? `Niche: ${persona.niche}` : "",
+      persona.niche            ? `Niche: ${persona.niche}` : "",
       persona.recurring_themes ? `Recurring themes: ${persona.recurring_themes}` : "",
-      persona.pushback       ? `Pushes back on: ${persona.pushback}` : "",
+      persona.pushback         ? `Pushes back on: ${persona.pushback}` : "",
     ].filter(Boolean).join("\n");
 
     const samplesBlock = (persona.sample_captions as string[])?.filter(Boolean).length > 0
       ? `\nSAMPLE CAPTIONS (mirror this voice exactly):\n${(persona.sample_captions as string[])
           .filter(Boolean).map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n\n")}`
       : "";
+
+    const refsBlock = (() => {
+      const refs = (persona.reference_accounts as Array<{ handle: string; whatLike: string }> ?? [])
+        .filter((r: { handle: string }) => r.handle?.trim());
+      if (refs.length === 0) return "";
+      const list = refs
+        .map((r: { handle: string; whatLike: string }) => `  @${r.handle}${r.whatLike ? ` — ${r.whatLike}` : ""}`)
+        .join("\n");
+      return `\nSTYLE REFERENCES — accounts this creator admires (use as calibration, never copy):\n${list}\n\nFor each account you recognise, use your knowledge of their style, tone, energy and content structure as calibration points. What makes their content feel authentic? How do they open posts? How do they close? Channel that same energy into this creator's unique voice — never copy, always calibrate.`;
+    })();
 
     const notesBlock = (thoughtNotes as { transcript?: string; title?: string }[]).length > 0
       ? (thoughtNotes as { transcript?: string; title?: string }[])
@@ -136,13 +146,43 @@ Write a ${(audience.primary_platform || "social media")} post. Return ONLY valid
 
     const lengthNote = length ? `${contentType.replace(/_/g, " ")} — ${length}` : contentType.replace(/_/g, " ");
 
+    const lengthInstruction = (() => {
+      if (contentType === "instagram_caption") {
+        if (length === "short")  return "\nSTRICT LIMIT: 50-80 words total. Count every word. Stop at 80 words maximum. If your draft exceeds 80 words, cut it down.";
+        if (length === "medium") return "\nSTRICT LIMIT: 150-200 words total. Count every word.";
+        if (length === "long")   return "\nSTRICT LIMIT: 250-300 words total. Count every word.";
+      }
+      if (contentType === "carousel_script") {
+        if (length === "3")  return "\nSTRICT LIMIT: 40 words per slide maximum. 3 slides total. One clear idea per slide.";
+        if (length === "5")  return "\nSTRICT LIMIT: 30 words per slide maximum. 5 slides total. One clear idea per slide.";
+        if (length === "7")  return "\nSTRICT LIMIT: 25 words per slide maximum. 7 slides total. One clear idea per slide.";
+        if (length === "10") return "\nSTRICT LIMIT: 20 words per slide maximum. 10 slides total. One clear idea per slide.";
+        return "\nSTRICT LIMIT: Maximum 30 words per slide. One clear idea per slide.";
+      }
+      if (contentType === "reel_script") {
+        if (length === "7s")  return "\nSTRICT LIMIT: 15-20 words maximum. This is a 7-second reel — every word counts.";
+        if (length === "15s") return "\nSTRICT LIMIT: 35-45 words maximum. 15-second reel — short and punchy.";
+        if (length === "30s") return "\nSTRICT LIMIT: 70-90 words maximum. 30-second reel.";
+        if (length === "60s") return "\nSTRICT LIMIT: 140-160 words maximum. 60-second reel.";
+      }
+      if (contentType === "story_sequence") return "\nSTRICT LIMIT: Maximum 20 words per story frame. Keep it visual and minimal.";
+      return "";
+    })();
+
+    // FIX 7: never_say goes into the system prompt so it is enforced at the model level
+    const neverSayInstruction = persona.never_say?.trim()
+      ? `\n\nBANNED WORDS/PHRASES — never use these under any circumstances: ${persona.never_say}\n\nBefore finalising your response, scan every line for these banned words. If any appear, rewrite that section.`
+      : "";
+
+    const dynamicSystem = SYSTEM_PROMPT + neverSayInstruction;
+
     const mediaTypeNote = mediaType && mediaType !== "both"
       ? `\nMedia preference: ${mediaType === "photos" ? "suggest image descriptions only — no video clips" : "suggest video clip descriptions only — no static images"}`
       : "";
 
     const userMessage = `Creator persona:
 ${personaBlock}
-${samplesBlock}
+${samplesBlock}${refsBlock}
 
 Recent thoughts and voice notes:
 ${notesBlock}
@@ -152,14 +192,14 @@ ${audienceBlock}
 
 Content type: ${lengthNote}
 Topic: ${topic}
-Output language: ${persona.output_language || "English"}${toneNote}${feedbackNote}${dateNote}${mediaTypeNote}
+Output language: ${persona.output_language || "English"}${toneNote}${feedbackNote}${dateNote}${mediaTypeNote}${lengthInstruction}
 
 Generate ${variations} variation(s). Each must be distinctly different (different angle, hook, or opening). Mirror the creator's exact voice — their rhythm, vocabulary, punctuation. Speak directly to this audience's pain points and dreams.`;
 
     const message = await anthropic.messages.create({
       model:      "claude-sonnet-4-6",
       max_tokens: 4000,
-      system:     SYSTEM_PROMPT,
+      system:     dynamicSystem,
       messages:   [{ role: "user", content: userMessage }],
     });
 

@@ -26,6 +26,7 @@ interface PersonaProfile {
   transformation_after: string | null;
   tone_words: string[] | null;
   tone_description: string | null;
+  never_say: string | null;
   beliefs: string | null;
   recurring_themes: string | null;
   pushback: string | null;
@@ -88,6 +89,7 @@ interface FormState {
   transformation_after:    string;
   tone_words:              string[];
   tone_description:        string;
+  never_say:               string;
   beliefs:                 string;
   recurring_themes:        string;
   pushback:                string;
@@ -105,6 +107,7 @@ function initForm(p: PersonaProfile | null): FormState {
     transformation_after:    p?.transformation_after    ?? "",
     tone_words:              p?.tone_words              ?? [],
     tone_description:        p?.tone_description        ?? "",
+    never_say:               p?.never_say               ?? "",
     beliefs:                 p?.beliefs                 ?? "",
     recurring_themes:        p?.recurring_themes        ?? "",
     pushback:                p?.pushback                ?? "",
@@ -156,13 +159,14 @@ function PersonaForm({ persona, onSaved }: { persona: PersonaProfile | null; onS
         niche: form.niche, audience: form.audience,
         transformation_before: form.transformation_before, transformation_after: form.transformation_after,
         tone_words: form.tone_words, tone_description: form.tone_description,
+        never_say: form.never_say || null,
         beliefs: form.beliefs, recurring_themes: form.recurring_themes,
         pushback: form.pushback, reference_accounts: cleanRefs,
       }, { onConflict: "user_id" });
       if (dbErr) throw dbErr;
       const res = await fetch("/api/generate-fingerprint", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instagramHandle: form.instagram_handle, niche: form.niche, audience: form.audience, transformationBefore: form.transformation_before, transformationAfter: form.transformation_after, toneWords: form.tone_words, toneDescription: form.tone_description, beliefs: form.beliefs, recurringThemes: form.recurring_themes, pushback: form.pushback, referenceAccounts: cleanRefs }),
+        body: JSON.stringify({ instagramHandle: form.instagram_handle, niche: form.niche, audience: form.audience, transformationBefore: form.transformation_before, transformationAfter: form.transformation_after, toneWords: form.tone_words, toneDescription: form.tone_description, neverSay: form.never_say, beliefs: form.beliefs, recurringThemes: form.recurring_themes, pushback: form.pushback, referenceAccounts: cleanRefs }),
       });
       const { fingerprint: newFp, error: fpErr } = await res.json();
       if (fpErr) throw new Error(fpErr);
@@ -178,7 +182,7 @@ function PersonaForm({ persona, onSaved }: { persona: PersonaProfile | null; onS
       const cleanRefs = form.reference_accounts.filter(r => r.handle.trim());
       const res = await fetch("/api/generate-fingerprint", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instagramHandle: form.instagram_handle, niche: form.niche, audience: form.audience, transformationBefore: form.transformation_before, transformationAfter: form.transformation_after, toneWords: form.tone_words, toneDescription: form.tone_description, beliefs: form.beliefs, recurringThemes: form.recurring_themes, pushback: form.pushback, referenceAccounts: cleanRefs }),
+        body: JSON.stringify({ instagramHandle: form.instagram_handle, niche: form.niche, audience: form.audience, transformationBefore: form.transformation_before, transformationAfter: form.transformation_after, toneWords: form.tone_words, toneDescription: form.tone_description, neverSay: form.never_say, beliefs: form.beliefs, recurringThemes: form.recurring_themes, pushback: form.pushback, referenceAccounts: cleanRefs }),
       });
       const { fingerprint: newFp, error: fpErr } = await res.json();
       if (fpErr) throw new Error(fpErr);
@@ -286,6 +290,12 @@ function PersonaForm({ persona, onSaved }: { persona: PersonaProfile | null; onS
               <div>
                 <FieldLabel label="In my own words, my tone is:" />
                 <textarea value={form.tone_description} onChange={e => set("tone_description", e.target.value)} rows={2} placeholder="e.g. Direct but warm. I swear sometimes. I use short sentences. I don't do corporate speak." className={INPUT} />
+              </div>
+              <div>
+                <FieldLabel
+                  label="Words or phrases I'd NEVER say"
+                  helper="e.g. 'hustle', 'grind', 'boss babe', 'level up', 'crushing it' — the words that make you cringe when you read them in AI content" />
+                <textarea value={form.never_say} onChange={e => set("never_say", e.target.value)} rows={2} placeholder="I would never say..." className={INPUT} />
               </div>
             </div>
           </div>

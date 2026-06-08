@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-  Sparkles, Loader2, ThumbsDown, RefreshCw,
+  Sparkles, Loader2, RefreshCw,
   ChevronDown, ChevronRight, Plus, AlertCircle,
   Camera, Edit2, CheckCircle2, Copy, Save, Trash2,
 } from "lucide-react";
@@ -66,7 +66,8 @@ const LANGUAGES = ["English", "Spanish", "Portuguese", "French", "Italian"] as c
 
 const FEEDBACK_REASONS = [
   "Not my voice", "Too formal", "Too salesy",
-  "Wrong energy", "Good ideas wrong words", "Too long",
+  "Wrong energy", "Good ideas, wrong words", "Too long",
+  "Not specific enough",
 ] as const;
 
 const THIS_YEAR    = new Date().getFullYear();
@@ -120,6 +121,21 @@ const GENERATING_MESSAGES = [
 
 const inputCls =
   "w-full rounded-lg border border-[#E2E2E0] bg-white px-3 py-2.5 text-sm text-[#0F172A] placeholder:text-[#94A3B8] outline-none transition focus:border-voce-indigo focus:ring-2 focus:ring-voce-indigo/20";
+
+function cleanContent(text: string): string {
+  return text
+    .replace(/  +/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/ \n/g, "\n")
+    .replace(/\n /g, "\n")
+    .trim();
+}
+
+function enforceWordLimit(text: string, maxWords: number): string {
+  const words = text.trim().split(/\s+/);
+  if (words.length <= maxWords) return text;
+  return words.slice(0, maxWords).join(" ") + "...";
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -394,14 +410,15 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected }: 
   onDelete: (id: string) => void;
   photosConnected: boolean;
 }) {
-  const [expanded,     setExpanded]     = useState(false);
-  const [body,         setBody]         = useState(draft.body);
-  const [draftHook,    setDraftHook]    = useState(draft.draft_hook);
-  const [draftBody,    setDraftBody]    = useState(draft.draft_body);
-  const [draftCta,     setDraftCta]     = useState(draft.draft_cta);
-  const [editing,      setEditing]      = useState(false);
-  const [thumbs,       setThumbs]       = useState<"up" | "down" | null>(null);
-  const [feedback,     setFeedback]     = useState<string[]>([]);
+  const [expanded,      setExpanded]     = useState(false);
+  const [body,          setBody]         = useState(draft.body);
+  const [draftHook,     setDraftHook]    = useState(draft.draft_hook);
+  const [draftBody,     setDraftBody]    = useState(draft.draft_body);
+  const [draftCta,      setDraftCta]     = useState(draft.draft_cta);
+  const [editing,       setEditing]      = useState(false);
+  const [showFeedback,  setShowFeedback] = useState(false);
+  const [feedback,      setFeedback]     = useState<string[]>([]);
+  const originalBodyRef = useRef(draft.body);
   const [status,       setStatus]       = useState(draft.status);
   const [approving,    setApproving]    = useState(false);
   const [publishing,   setPublishing]   = useState(false);
@@ -491,6 +508,7 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected }: 
 
   async function handleRegenerate() {
     if (feedback.length === 0 || regenerating) return;
+    setShowFeedback(false);
     setRegenerating(true);
     try {
       const supabase = createClient();
@@ -551,21 +569,21 @@ Write a completely different version that addresses these specific issues. ` +
           .slice(0, 5);
       }
 
-      const newBody = variation.full_caption ?? variation.content ?? body;
+      const newBody = cleanContent(variation.full_caption ?? variation.content ?? body);
 
       // Update both local state AND the DB
       setBody(newBody);
-      setDraftHook(variation.hook ?? null);
-      setDraftBody(variation.body ?? null);
-      setDraftCta(variation.cta  ?? null);
-      setThumbs(null);
+      setDraftHook(variation.hook ? cleanContent(variation.hook) : null);
+      setDraftBody(variation.body ? cleanContent(variation.body) : null);
+      setDraftCta(variation.cta  ? cleanContent(variation.cta)  : null);
       setFeedback([]);
 
       const { error: updateErr } = await supabase.from("content_drafts").update({
-        body:       newBody,
-        draft_hook: variation.hook ?? null,
-        draft_body: variation.body ?? null,
-        draft_cta:  variation.cta  ?? null,
+        body:           newBody,
+        draft_hook:     variation.hook ? cleanContent(variation.hook) : null,
+        draft_body:     variation.body ? cleanContent(variation.body) : null,
+        draft_cta:      variation.cta  ? cleanContent(variation.cta)  : null,
+        algorithm_note: `Regenerated after rejection: ${feedback.join(", ")}`,
       }).eq("id", draft.id);
 
       if (updateErr) console.error("[regenerate] DB update error:", updateErr.message);
@@ -586,9 +604,20 @@ Write a completely different version that addresses these specific issues. ` +
     setFeedback(prev => prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r]);
   }
 
-  function toggleEdit() {
+  async function toggleEdit() {
     if (editing) {
       setEditing(false);
+      if (body !== originalBodyRef.current) {
+        setSaveState("saving");
+        try {
+          const supabase = createClient();
+          await supabase.from("content_drafts").update({ body }).eq("id", draft.id);
+          console.log("[edit] saved. original:", originalBodyRef.current.slice(0, 80), "→ edited:", body.slice(0, 80));
+          originalBodyRef.current = body;
+          setSaveState("saved");
+          setTimeout(() => setSaveState("idle"), 2000);
+        } catch { setSaveState("idle"); }
+      }
     } else {
       setEditing(true);
       setTimeout(() => { textareaRef.current?.focus(); }, 10);
@@ -682,134 +711,94 @@ Write a completely different version that addresses these specific issues. ` +
             </div>
           )}
 
-          {/* Action buttons */}
-          <div className="flex flex-wrap gap-2">
-            {editing && (
-              <button
-                onClick={handleSave}
-                disabled={saveState === "saving"}
-                className="flex items-center gap-1.5 rounded-lg border border-[#E2E2E0] px-3 py-1.5 text-xs font-medium text-[#64748B] transition hover:border-voce-indigo/50 hover:text-voce-indigo disabled:opacity-60"
-              >
-                {saveState === "saving" ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : saveState === "saved" ? (
-                  <><CheckCircle2 className="h-3.5 w-3.5 text-voce-teal" /><span className="text-voce-teal">Saved ✓</span></>
-                ) : (
-                  <><Save className="h-3.5 w-3.5" /> Save</>
-                )}
-              </button>
-            )}
-            <button
-              onClick={toggleEdit}
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+          {/* ── Row 1: Edit | Copy | Regenerate ── */}
+          <div className="grid grid-cols-3 gap-2">
+            <button onClick={toggleEdit}
+              className={`flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border text-xs font-medium transition ${
                 editing
                   ? "border-voce-indigo bg-voce-indigo/5 text-voce-indigo"
                   : "border-[#E2E2E0] text-[#64748B] hover:border-voce-indigo/50 hover:text-voce-indigo"
-              }`}
-            >
-              <Edit2 className="h-3.5 w-3.5" />
-              {editing ? "Done editing" : "Edit"}
+              }`}>
+              {saveState === "saving" ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : saveState === "saved" && !editing ? <><CheckCircle2 className="h-3.5 w-3.5 text-voce-teal" /><span className="text-voce-teal">Saved</span></>
+                : <><Edit2 className="h-3.5 w-3.5" />{editing ? "Done" : "Edit"}</>}
             </button>
-            <button
-              onClick={handleCopy}
-              className="flex items-center gap-1.5 rounded-lg border border-[#E2E2E0] px-3 py-1.5 text-xs font-medium text-[#64748B] transition hover:border-voce-indigo/50 hover:text-voce-indigo"
-            >
-              {copyState === "copied" ? (
-                <><CheckCircle2 className="h-3.5 w-3.5 text-voce-teal" /><span className="text-voce-teal">Copied ✓</span></>
-              ) : (
-                <><Copy className="h-3.5 w-3.5" /> Copy</>
-              )}
+            <button onClick={handleCopy}
+              className="flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-[#E2E2E0] text-xs font-medium text-[#64748B] transition hover:border-voce-indigo/50 hover:text-voce-indigo">
+              {copyState === "copied"
+                ? <><CheckCircle2 className="h-3.5 w-3.5 text-voce-teal" /><span className="text-voce-teal">Copied</span></>
+                : <><Copy className="h-3.5 w-3.5" /> Copy</>}
             </button>
-            {saveState === "saved" && !editing && (
-              <span className="flex items-center gap-1 text-xs font-medium text-voce-teal">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Regenerated ✓
-              </span>
-            )}
+            <button onClick={() => { setShowFeedback(v => !v); setFeedback([]); }}
+              className={`flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border text-xs font-medium transition ${
+                showFeedback
+                  ? "border-amber-300 bg-amber-50 text-amber-700"
+                  : "border-[#E2E2E0] text-[#64748B] hover:border-amber-300 hover:text-amber-700"
+              }`}>
+              {regenerating
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</>
+                : <><RefreshCw className="h-3.5 w-3.5" /> Regenerate</>}
+            </button>
           </div>
 
-          {/* ── Status-specific actions ── */}
-
-          {isPublished && (
-            <div className="flex items-center gap-2 text-sm font-medium text-voce-teal">
-              <CheckCircle2 className="h-4 w-4" /> Published
+          {/* Feedback chips — shown when Regenerate is clicked */}
+          {showFeedback && (
+            <div className="space-y-2 rounded-xl bg-[#FAFAF8] p-3">
+              <p className="text-xs font-medium text-[#64748B]">What was off?</p>
+              <div className="flex flex-wrap gap-1.5">
+                {FEEDBACK_REASONS.map(r => (
+                  <button key={r} type="button" onClick={() => toggleFeedback(r)}
+                    className={["rounded-full px-2.5 py-1 text-xs font-medium transition",
+                      feedback.includes(r) ? "bg-amber-100 text-amber-700" : "border border-[#E2E2E0] text-[#64748B] hover:border-amber-300"].join(" ")}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+              {feedback.length > 0 && (
+                <button onClick={handleRegenerate} disabled={regenerating}
+                  className="flex min-h-[36px] w-full items-center justify-center gap-2 rounded-lg bg-voce-indigo text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60">
+                  {regenerating
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Regenerating…</>
+                    : <><RefreshCw className="h-3.5 w-3.5" /> Regenerate with feedback</>}
+                </button>
+              )}
             </div>
           )}
 
+          {/* ── Row 2: Approve (only when not approved/published) ── */}
+          {!isApproved && !isPublished && (
+            <button onClick={handleApprove} disabled={approving || deleting}
+              className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-voce-indigo text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60">
+              {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              ✓ Approve
+            </button>
+          )}
+
+          {/* Approved / Published status */}
           {isApproved && !isPublished && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-voce-indigo">
+            <div className="space-y-2">
+              <p className="flex items-center gap-2 text-sm font-semibold text-voce-indigo">
                 <CheckCircle2 className="h-4 w-4" /> Approved ✓
-              </div>
-              <button
-                onClick={handlePublish}
-                disabled={publishing}
-                className="flex min-h-[40px] items-center gap-2 rounded-xl bg-voce-teal px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
-              >
-                {publishing
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <CheckCircle2 className="h-4 w-4" />}
+              </p>
+              <button onClick={handlePublish} disabled={publishing}
+                className="flex min-h-[40px] items-center gap-2 rounded-xl bg-voce-teal px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60">
+                {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 Mark as published
               </button>
             </div>
           )}
-
-          {!isApproved && !isPublished && (
-            <div className="space-y-3">
-              {/* Primary actions — large, clear */}
-              <div className="flex flex-col gap-2">
-                <button onClick={handleApprove} disabled={approving || deleting}
-                  className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-voce-indigo text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60">
-                  {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                  Approve
-                </button>
-                <button onClick={handleDelete} disabled={deleting || approving}
-                  className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl border border-red-300 text-sm font-semibold text-red-500 transition hover:bg-red-50 disabled:opacity-60">
-                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  Delete
-                </button>
-              </div>
-
-              {/* Optional feedback / regenerate */}
-              <div className="flex gap-2">
-                <button onClick={() => setThumbs(t => t === "down" ? null : "down")}
-                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition ${
-                    thumbs === "down"
-                      ? "border-red-300 bg-red-50 text-red-500"
-                      : "border-[#E2E2E0] text-[#94A3B8] hover:border-red-200 hover:text-red-400"
-                  }`}>
-                  <ThumbsDown className="h-3 w-3" /> Not right?
-                </button>
-              </div>
-
-              {/* Feedback chips */}
-              {thumbs === "down" && (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-[#64748B]">What was off?</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {FEEDBACK_REASONS.map(r => (
-                      <button key={r} type="button" onClick={() => toggleFeedback(r)}
-                        className={[
-                          "rounded-full px-2.5 py-1 text-xs font-medium transition",
-                          feedback.includes(r)
-                            ? "bg-red-100 text-red-600"
-                            : "border border-[#E2E2E0] text-[#64748B] hover:border-red-300",
-                        ].join(" ")}>
-                        {r}
-                      </button>
-                    ))}
-                  </div>
-                  {feedback.length > 0 && (
-                    <button onClick={handleRegenerate} disabled={regenerating}
-                      className="flex min-h-[36px] items-center gap-2 rounded-lg border border-voce-indigo px-3 py-1.5 text-sm font-medium text-voce-indigo transition hover:bg-voce-indigo/5 disabled:opacity-60">
-                      {regenerating
-                        ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Regenerating…</>
-                        : <><RefreshCw className="h-3.5 w-3.5" /> Regenerate</>}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+          {isPublished && (
+            <p className="flex items-center gap-2 text-sm font-medium text-voce-teal">
+              <CheckCircle2 className="h-4 w-4" /> Published
+            </p>
           )}
+
+          {/* Delete */}
+          <button onClick={handleDelete} disabled={deleting || approving}
+            className="flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl border border-red-200 text-sm font-medium text-red-400 transition hover:bg-red-50 disabled:opacity-60">
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            Delete
+          </button>
 
           {/* Media suggestions */}
           <MediaSuggestions body={body} mediaType={draft.media_type} photosConnected={photosConnected}
@@ -927,6 +916,7 @@ export default function ContentPage() {
     if (!topic.trim()) { setError("Please enter a topic."); return; }
     if (!audienceId)   { setError("Please select an audience."); return; }
     setGenerating(true); setError(null); setGenSuccessMsg(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
     console.log("[generate] clicked — topic:", topic, "audienceId:", audienceId, "variations:", variations);
 
     try {
@@ -988,19 +978,26 @@ export default function ContentPage() {
       // Save every variation immediately — surface any DB error visibly
       // platform is intentionally null — the CHECK constraint only allows a fixed list
       // and audience platforms may contain values outside that list (tiktok, facebook, etc.)
+      const maxCaptionWords =
+        contentType === "instagram_caption"
+          ? contentLength === "short" ? 80 : contentLength === "medium" ? 200 : contentLength === "long" ? 300 : null
+          : contentType === "reel_script"
+          ? contentLength === "7s" ? 20 : contentLength === "15s" ? 45 : contentLength === "30s" ? 90 : contentLength === "60s" ? 160 : null
+          : null;
       const inserts = rawVariations.map(v => {
-        // Use full_caption directly — it already contains hashtags per the prompt spec.
-        // Do NOT append v.hashtags again or they appear twice.
-        const body = v.full_caption ?? v.content ?? "";
+        const cleaned = cleanContent(v.full_caption ?? v.content ?? "");
+        const body    = maxCaptionWords ? enforceWordLimit(cleaned, maxCaptionWords) : cleaned;
+        const wc      = body.split(/\s+/).filter(Boolean).length;
+        console.log("[generate] word count:", wc, "| target length:", contentLength);
         return {
           user_id:        user.id,
           title:          topic,
           body,
           platform:       null,
           status:     "generated",
-          draft_hook: v.hook ?? null,
-          draft_body: v.body ?? null,
-          draft_cta:  v.cta  ?? null,
+          draft_hook: v.hook ? cleanContent(v.hook) : null,
+          draft_body: v.body ? cleanContent(v.body) : null,
+          draft_cta:  v.cta  ? cleanContent(v.cta)  : null,
           media_type:      matchMedia ? mediaType : null,
           media_year_from: matchMedia ? mediaYearFrom : null,
           media_year_to:   matchMedia ? mediaYearTo   : null,
@@ -1023,7 +1020,7 @@ export default function ContentPage() {
           : "";
         setError(`Content generated but couldn't save to database: ${saveErr.message}.${sqlHint}`);
         const tempDrafts = rawVariations.map((v, i) => {
-          const body = v.full_caption ?? v.content ?? "";
+          const body = cleanContent(v.full_caption ?? v.content ?? "");
           return {
             id:              `temp-${Date.now()}-${i}`,
             title:           topic,
