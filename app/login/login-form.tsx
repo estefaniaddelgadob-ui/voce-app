@@ -62,7 +62,7 @@ export function LoginForm() {
               <path d="M14 8.5C14 8.5 14 11 12 12.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </div>
-          <h1 className="mt-4 text-3xl font-bold tracking-tight text-[#0F172A]">Voce</h1>
+          <h1 className="mt-4 text-3xl font-bold tracking-tight text-[#0F172A]">Echoooo</h1>
           <p className="mt-1 text-sm text-[#64748B]">Capture your voice. Build your brand.</p>
         </div>
 
@@ -136,7 +136,7 @@ export function LoginForm() {
         </div>
 
         <p className="mt-4 text-center text-xs text-[#94A3B8]">
-          By continuing you agree to Voce&apos;s terms of service.
+          By continuing you agree to Echoooo&apos;s terms of service.
         </p>
       </div>
     </div>

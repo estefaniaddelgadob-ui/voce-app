@@ -14,7 +14,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
                 <path d="M14 8.5C14 8.5 14 11 12 12.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
             </div>
-            <span className="text-base font-semibold tracking-tight text-[#0F172A]">Voce</span>
+            <span className="text-base font-semibold tracking-tight text-[#0F172A]">Echoooo</span>
           </Link>
           <nav className="flex items-center gap-6 text-sm text-[#64748B]">
             <Link href="/privacy" className="hover:text-[#0F172A] transition-colors">Privacy</Link>

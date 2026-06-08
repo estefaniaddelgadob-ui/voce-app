@@ -106,7 +106,7 @@ export function Sidebar() {
               <path d="M14 8.5C14 8.5 14 11 12 12.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </div>
-          <span className="text-lg font-semibold tracking-tight text-[#0F172A]">Voce</span>
+          <span className="text-lg font-semibold tracking-tight text-[#0F172A]">Echoooo</span>
         </Link>
       </div>
 

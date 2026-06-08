@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — Voce",
-  description: "How Voce collects, uses, and protects your data.",
+  title: "Privacy Policy — Echoooo",
+  description: "How Echoooo collects, uses, and protects your data.",
 };
 
 export default function PrivacyPage() {
@@ -12,13 +12,13 @@ export default function PrivacyPage() {
       <p className="mt-2 text-sm text-[#64748B]">Last updated: June 2026</p>
 
       <p className="mt-6 text-[#374151]">
-        Voce (&ldquo;we&rdquo;, &ldquo;us&rdquo;, or &ldquo;our&rdquo;) is committed to protecting your privacy.
+        Echoooo (&ldquo;we&rdquo;, &ldquo;us&rdquo;, or &ldquo;our&rdquo;) is committed to protecting your privacy.
         This policy explains what information we collect, how we use it, and what choices you have.
       </p>
 
       <Section title="1. Who We Are">
         <p>
-          Voce is a personal brand and content creation platform that helps creators develop their
+          Echoooo is a personal brand and content creation platform that helps creators develop their
           authentic voice and generate social media content using AI. We never sell your data or
           use it for advertising.
         </p>
@@ -80,7 +80,7 @@ export default function PrivacyPage() {
       </Section>
 
       <Section title="4. Third-Party Services">
-        <p>We use the following third-party services to operate Voce:</p>
+        <p>We use the following third-party services to operate Echoooo:</p>
         <ul className="list-disc pl-6 space-y-1 text-[#374151]">
           <li><strong>Supabase</strong> — database and authentication (supabase.com)</li>
           <li><strong>Anthropic (Claude)</strong> — AI content generation and analysis</li>
@@ -90,13 +90,13 @@ export default function PrivacyPage() {
         </ul>
         <p className="mt-4">
           Each of these services has its own privacy policy and data processing terms.
-          Your data is shared with them only to the extent necessary to provide Voce&apos;s functionality.
+          Your data is shared with them only to the extent necessary to provide Echoooo&apos;s functionality.
         </p>
       </Section>
 
       <Section title="5. Google Photos Integration">
         <p>
-          When you connect Google Photos, Voce requests read-only access
+          When you connect Google Photos, Echoooo requests read-only access
           (<code>photoslibrary.readonly</code>) to your Google Photos library. This means we can:
         </p>
         <ul className="list-disc pl-6 space-y-1 text-[#374151]">
@@ -146,7 +146,7 @@ export default function PrivacyPage() {
 
       <Section title="9. Children's Privacy">
         <p>
-          Voce is not directed at children under 13 years of age. We do not knowingly collect
+          Echoooo is not directed at children under 13 years of age. We do not knowingly collect
           personal information from children under 13.
         </p>
       </Section>
@@ -154,7 +154,7 @@ export default function PrivacyPage() {
       <Section title="10. Changes to This Policy">
         <p>
           We may update this privacy policy from time to time. When we do, we will update the
-          date at the top of this page. Continued use of Voce after changes constitutes
+          date at the top of this page. Continued use of Echoooo after changes constitutes
           acceptance of the updated policy.
         </p>
       </Section>
@@ -165,8 +165,8 @@ export default function PrivacyPage() {
           please contact us at:
         </p>
         <p className="mt-2">
-          <a href="mailto:privacy@voce.app" className="text-[#6366F1] hover:underline">
-            privacy@voce.app
+          <a href="mailto:privacy@echoooo.app" className="text-[#6366F1] hover:underline">
+            privacy@echoooo.app
           </a>
         </p>
       </Section>

@@ -13,13 +13,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Voce",
-  description: "Capture your voice. Build your brand.",
+  title: "Echoooo",
+  description: "Your voice. Amplified.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Voce",
+    title: "Echoooo",
   },
   formatDetection: { telephone: false },
   other: {

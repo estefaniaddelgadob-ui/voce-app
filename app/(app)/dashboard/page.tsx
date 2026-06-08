@@ -237,7 +237,7 @@ export default function DashboardPage() {
         <Link href="/library"
           className="block rounded-xl border border-[#E2E2E0] bg-white p-5 transition hover:border-voce-indigo/40 hover:shadow-sm">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-[#0F172A]">What Voce knows about you</h2>
+            <h2 className="text-base font-semibold text-[#0F172A]">What Echoooo knows about you</h2>
             <span className="text-sm font-medium text-voce-indigo">View all →</span>
           </div>
           {notes.length === 0 ? (

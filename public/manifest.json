@@ -1,7 +1,7 @@
 {
-  "name": "Voce — AI Content Platform",
-  "short_name": "Voce",
-  "description": "Capture your voice. Build your brand.",
+  "name": "Echoooo",
+  "short_name": "Echoooo",
+  "description": "Your voice. Amplified.",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
