@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Mic, ImagePlus, AlignLeft, ChevronRight,
-  Loader2, Trash2, CheckCircle2, Search, X, Plus,
+  Loader2, Trash2, CheckCircle2, Search, X, Plus, RefreshCw,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
@@ -19,6 +19,8 @@ interface ThoughtNote {
   themes: string[] | null;
   tags: string[] | null;
   raw_ideas: string | null;
+  ideas: string | null;
+  standout_phrases: string | null;
   user_summary: string | null;
   status: string;
   created_at: string;
@@ -79,8 +81,12 @@ function NoteCard({ note, onDelete }: {
   const [saving,    setSaving]    = useState(false);
   const [saved,     setSaved]     = useState(false);
 
-  const parsed  = parseRawIdeas(note.raw_ideas);
-  const preview = parsed?.ideas?.[0] ?? note.transcript?.slice(0, 90);
+  const parsed         = parseRawIdeas(note.raw_ideas);
+  const ideasFromField   = note.ideas ? note.ideas.split("\n").filter(Boolean) : [];
+  const phrasesFromField = note.standout_phrases ? note.standout_phrases.split("\n").filter(Boolean) : [];
+  const displayIdeas   = (parsed?.ideas?.length   ? parsed.ideas   : ideasFromField);
+  const displayPhrases = (parsed?.phrases?.length ? parsed.phrases : phrasesFromField);
+  const preview = displayIdeas[0] ?? note.transcript?.slice(0, 90);
   const dur     = fmtDur(note.duration_seconds);
   const { Icon, color, bg } = noteIcon(note.type);
 
@@ -173,11 +179,11 @@ function NoteCard({ note, onDelete }: {
           )}
 
           {/* Ideas */}
-          {parsed?.ideas && parsed.ideas.length > 0 && (
+          {displayIdeas.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">Key Ideas</p>
               <ul className="space-y-1.5">
-                {parsed.ideas.map((idea, i) => (
+                {displayIdeas.map((idea, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-[#0F172A]">
                     <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-voce-indigo" />
                     {idea}
@@ -220,11 +226,11 @@ function NoteCard({ note, onDelete }: {
           </div>
 
           {/* Standout phrases */}
-          {parsed?.phrases && parsed.phrases.length > 0 && (
+          {displayPhrases.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">Standout Phrases</p>
               <div className="space-y-1.5">
-                {parsed.phrases.map((p, i) => (
+                {displayPhrases.map((p, i) => (
                   <p key={i} className="border-l-2 border-voce-indigo/40 pl-3 text-sm italic text-[#64748B]">
                     &ldquo;{p}&rdquo;
                   </p>
@@ -291,29 +297,84 @@ const FILTER_TABS: { id: FilterTab; label: string }[] = [
 ];
 
 export default function LibraryPage() {
-  const [notes,   setNotes]   = useState<ThoughtNote[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search,  setSearch]  = useState("");
-  const [filter,  setFilter]  = useState<FilterTab>("all");
+  const [notes,            setNotes]            = useState<ThoughtNote[]>([]);
+  const [loading,          setLoading]          = useState(true);
+  const [search,           setSearch]           = useState("");
+  const [filter,           setFilter]           = useState<FilterTab>("all");
+  const [reAnalysing,      setReAnalysing]      = useState(false);
+  const [reAnalyseProgress, setReAnalyseProgress] = useState<{ done: number; total: number } | null>(null);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-        const { data } = await supabase.from("thought_notes")
-          .select("*")
-          .eq("user_id", user.id)
-          .neq("status", "archived")
-          .order("created_at", { ascending: false });
-        setNotes((data as ThoughtNote[]) ?? []);
-      } finally {
-        setLoading(false);
-      }
+  async function fetchNotes() {
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase.from("thought_notes")
+        .select("*")
+        .eq("user_id", user.id)
+        .neq("status", "archived")
+        .order("created_at", { ascending: false });
+      setNotes((data as ThoughtNote[]) ?? []);
+    } finally {
+      setLoading(false);
     }
-    fetchData();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }
+
+  useEffect(() => { fetchNotes(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function reAnalyseNotes() {
+    setReAnalysing(true);
+    setReAnalyseProgress(null);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Find notes with transcript but empty ideas
+      const { data: candidates } = await supabase.from("thought_notes")
+        .select("id, transcript, ideas")
+        .eq("user_id", user.id)
+        .not("transcript", "is", null);
+
+      const toBackfill = (candidates ?? []).filter(
+        (n: { id: string; transcript: string | null; ideas: string | null }) =>
+          n.transcript?.trim() && (!n.ideas || n.ideas.trim() === "")
+      );
+
+      if (toBackfill.length === 0) { setReAnalysing(false); return; }
+
+      setReAnalyseProgress({ done: 0, total: toBackfill.length });
+
+      for (let i = 0; i < toBackfill.length; i++) {
+        const note = toBackfill[i];
+        try {
+          const res = await fetch("/api/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ transcript: note.transcript }),
+          });
+          const analysis = await res.json();
+          if (analysis.error) continue;
+
+          await supabase.from("thought_notes").update({
+            title:            analysis.title   ?? null,
+            ideas:            (analysis.ideas  ?? []).join("\n"),
+            standout_phrases: (analysis.phrases ?? []).join("\n"),
+            themes:           analysis.themes   ?? [],
+            raw_ideas:        JSON.stringify(analysis),
+          }).eq("id", note.id);
+        } catch {
+          // skip failed notes, continue with rest
+        }
+        setReAnalyseProgress({ done: i + 1, total: toBackfill.length });
+      }
+
+      await fetchNotes();
+    } finally {
+      setReAnalysing(false);
+      setReAnalyseProgress(null);
+    }
+  }
 
   function handleDeleteNote(id: string) {
     setNotes(prev => prev.filter(n => n.id !== id));
@@ -346,11 +407,23 @@ export default function LibraryPage() {
   return (
     <div>
       {/* Header */}
-      <div className="mb-6 pr-8 md:pr-0">
-        <h1 className="text-2xl font-semibold text-[#0F172A]">What Voce knows about you</h1>
-        <p className="mt-1 text-sm text-[#64748B]">
-          Every input you add helps the AI learn your voice, ideas, and perspective.
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4 pr-8 md:pr-0">
+        <div>
+          <h1 className="text-2xl font-semibold text-[#0F172A]">What Voce knows about you</h1>
+          <p className="mt-1 text-sm text-[#64748B]">
+            Every input you add helps the AI learn your voice, ideas, and perspective.
+          </p>
+        </div>
+        <button
+          onClick={reAnalyseNotes}
+          disabled={reAnalysing}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#E2E2E0] px-3 py-2 text-xs font-medium text-[#64748B] transition hover:border-voce-indigo hover:text-voce-indigo disabled:opacity-60"
+        >
+          {reAnalysing
+            ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {reAnalyseProgress ? `${reAnalyseProgress.done}/${reAnalyseProgress.total}` : "Analysing…"}</>
+            : <><RefreshCw className="h-3.5 w-3.5" /> Re-analyse notes</>}
+        </button>
       </div>
 
       {/* Search */}

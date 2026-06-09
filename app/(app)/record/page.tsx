@@ -332,6 +332,9 @@ async function saveNote(
     raw_ideas_len:     payload.raw_ideas.length,
     duration_seconds:  payload.duration_seconds,
   });
+  console.log("[saveNote] ideas:", payload.ideas?.slice(0, 100));
+  console.log("[saveNote] phrases:", payload.standout_phrases?.slice(0, 100));
+  console.log("[saveNote] themes:", payload.themes);
 
   const response = await supabase.from("thought_notes").insert(payload).select();
 
