@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
-  Mic, ImagePlus, AlignLeft, ChevronRight,
+  Mic, ImagePlus, AlignLeft, ChevronRight, ChevronLeft,
   Loader2, Trash2, CheckCircle2, Search, X, Plus, RefreshCw,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
@@ -42,14 +43,13 @@ function parseRawIdeas(raw: string | null): RawAnalysis | null {
 }
 
 function fmtDate(iso: string) {
-  const d    = new Date(iso);
-  const now  = new Date();
-  const days = Math.floor((now.getTime() - d.getTime()) / 86_400_000);
-  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  if (days === 0) return `Today at ${time}`;
-  if (days === 1) return `Yesterday at ${time}`;
-  if (days < 7)  return `${days} days ago`;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return new Date(iso).toLocaleDateString("en-GB", {
+    day:    "numeric",
+    month:  "short",
+    year:   "numeric",
+    hour:   "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function fmtDur(sec: number | null) {
@@ -297,6 +297,7 @@ const FILTER_TABS: { id: FilterTab; label: string }[] = [
 ];
 
 export default function LibraryPage() {
+  const router = useRouter();
   const [notes,            setNotes]            = useState<ThoughtNote[]>([]);
   const [loading,          setLoading]          = useState(true);
   const [search,           setSearch]           = useState("");
@@ -408,11 +409,20 @@ export default function LibraryPage() {
     <div>
       {/* Header */}
       <div className="mb-6 flex items-start justify-between gap-4 pr-8 md:pr-0">
-        <div>
-          <h1 className="text-2xl font-semibold text-[#0F172A]">What Voce knows about you</h1>
-          <p className="mt-1 text-sm text-[#64748B]">
-            Every input you add helps the AI learn your voice, ideas, and perspective.
-          </p>
+        <div className="flex items-start gap-1">
+          <button
+            onClick={() => router.back()}
+            className="-ml-2 mt-0.5 p-2 text-[#94A3B8] transition hover:text-[#0F172A]"
+            aria-label="Go back"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-semibold text-[#0F172A]">What Voce knows about you</h1>
+            <p className="mt-1 text-sm text-[#64748B]">
+              Every input you add helps the AI learn your voice, ideas, and perspective.
+            </p>
+          </div>
         </div>
         <button
           onClick={reAnalyseNotes}
