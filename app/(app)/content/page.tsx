@@ -511,13 +511,17 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, is
 
   async function handleDelete() {
     if (!confirm("Delete this post? This can't be undone.")) return;
-    setDeleting(true);
+    setDeleting(true); setCardError(null);
+    console.log("[delete] attempting:", draft.id);
     try {
       const supabase = createClient();
-      await supabase.from("content_drafts").delete().eq("id", draft.id);
+      const { error } = await supabase.from("content_drafts").delete().eq("id", draft.id);
+      console.log("[delete] result:", error);
+      if (error) throw error;
       onDelete(draft.id);
     } catch (err) {
       setCardError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
       setDeleting(false);
     }
   }
