@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   Sparkles, Loader2, RefreshCw,
   ChevronDown, ChevronRight, Plus, AlertCircle,
-  Camera, Edit2, CheckCircle2, Copy, Save, Trash2,
+  Camera, Edit2, CheckCircle2, Copy, Trash2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
@@ -435,20 +435,6 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected }: 
   const previewLine = draft.draft_hook ?? body.split("\n").find(l => l.trim()) ?? body.slice(0, 80);
   const hashtags    = body.match(/#[^\s#]+/g) ?? [];
 
-  async function handleSave() {
-    if (saveState !== "idle") return;
-    setSaveState("saving");
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from("content_drafts")
-        .update({ body }).eq("id", draft.id);
-      if (error) throw error;
-      setSaveState("saved");
-      setTimeout(() => setSaveState("idle"), 2000);
-    } catch {
-      setSaveState("idle");
-    }
-  }
 
   async function handleCopy() {
     try {
