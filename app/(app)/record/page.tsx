@@ -300,36 +300,36 @@ async function saveNote(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const finalTranscript = edits?.transcript ?? result.transcript;
-  const finalThemes     = edits?.themes     ?? result.analysis.themes ?? [];
-  const finalAnalysis   = edits?.ideas
+  const finalTranscript  = edits?.transcript ?? result.transcript;
+  const finalThemes      = edits?.themes     ?? result.analysis.themes ?? [];
+  const finalAnalysis    = edits?.ideas
     ? { ...result.analysis, ideas: edits.ideas }
     : result.analysis;
+  const finalIdeas       = (edits?.ideas ?? result.analysis.ideas ?? []).join("\n");
+  const finalPhrases     = (result.analysis.phrases ?? []).join("\n");
 
+  // Only include columns confirmed to exist in thought_notes
   const payload = {
     user_id:          user.id,
-    type:             noteType,                // must be 'voice' | 'photo' | 'text'
+    type:             noteType,
     title:            result.analysis.title,
     transcript:       finalTranscript,
     themes:           finalThemes,
-    raw_ideas:        finalAnalysis,           // object, not JSON string — avoids "string did not match pattern" on JSONB columns
+    raw_ideas:        JSON.stringify(finalAnalysis),  // TEXT column — must be string
     duration_seconds: result.durationSec ?? null,
-    status:           "processed",
+    ideas:            finalIdeas,
+    standout_phrases: finalPhrases,
   };
 
   console.log("[saveNote] payload diagnostics:", {
     type:              payload.type,
-    status:            payload.status,
     title_len:         payload.title?.length,
-    title_preview:     payload.title?.slice(0, 80),
     transcript_len:    finalTranscript.length,
     transcript_words:  finalTranscript.split(/\s+/).filter(Boolean).length,
-    transcript_first:  finalTranscript.slice(0, 100),
     themes_count:      finalThemes.length,
-    themes:            JSON.stringify(finalThemes),
-    raw_ideas_type:    typeof finalAnalysis,
-    raw_ideas_keys:    Object.keys(finalAnalysis),
-    ideas_count:       (finalAnalysis as Analysis).ideas?.length,
+    ideas_len:         finalIdeas.length,
+    phrases_len:       finalPhrases.length,
+    raw_ideas_len:     payload.raw_ideas.length,
     duration_seconds:  payload.duration_seconds,
   });
 
