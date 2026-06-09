@@ -175,10 +175,10 @@ Write a ${(audience.primary_platform || "social media")} post. Return ONLY valid
         return "\nSTRICT LIMIT: Maximum 30 words per slide. One clear idea per slide.";
       }
       if (contentType === "reel_script") {
-        if (length === "7s")  return "\nSTRICT LIMIT: 15-20 words maximum. This is a 7-second reel — every word counts.";
-        if (length === "15s") return "\nSTRICT LIMIT: 35-45 words maximum. 15-second reel — short and punchy.";
-        if (length === "30s") return "\nSTRICT LIMIT: 70-90 words maximum. 30-second reel.";
-        if (length === "60s") return "\nSTRICT LIMIT: 140-160 words maximum. 60-second reel.";
+        if (length === "7s")  return "\nSTRICT LIMIT: 15-20 words MAXIMUM. This is spoken aloud at natural pace. One single punchy statement only. No hook label, no section labels — just the words to speak.";
+        if (length === "15s") return "\nSTRICT LIMIT: 35-40 words MAXIMUM. This is spoken aloud at natural pace. Hook (1 sentence) + one key point + CTA. No section labels — just the words to speak.";
+        if (length === "30s") return "\nSTRICT LIMIT: 70-80 words MAXIMUM. This is spoken aloud at natural pace. Hook + 2 points + CTA. No section labels — just the words to speak.";
+        if (length === "60s") return "\nSTRICT LIMIT: 140-160 words MAXIMUM. This is spoken aloud at natural pace. Hook + 3-4 points + CTA. No section labels — just the words to speak.";
       }
       if (contentType === "story_sequence") return "\nSTRICT LIMIT: Maximum 20 words per story frame. Keep it visual and minimal.";
       return "";

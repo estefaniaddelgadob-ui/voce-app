@@ -293,6 +293,21 @@ function PhotoGrid({ mediaType, yearFrom, yearTo }: {
   );
 }
 
+// ── Slide helpers ──────────────────────────────────────────────────────────────
+
+const SLIDE_PATTERN = /(?:Slide|Frame|Story|Card)\s*\d+[:\s]*/gi;
+
+function hasSlides(text: string): boolean {
+  return SLIDE_PATTERN.test(text);
+}
+
+function parseSlides(text: string): string[] {
+  // Split on "Slide X:", "Frame X:", "Story X:", "Card X:" — strip the label, keep the content
+  return text.split(/(?:Slide|Frame|Story|Card)\s*\d+[:\s]*/i)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
 // ── Media suggestions ──────────────────────────────────────────────────────────
 
 interface ContentSection { label: string; text: string; }
@@ -759,13 +774,24 @@ Write a completely different version that addresses these specific issues. ` +
             </div>
           ) : (
             <div>
-              <textarea
-                ref={textareaRef}
-                value={body}
-                readOnly
-                rows={Math.max(4, body.split("\n").length + 2)}
-                className="w-full cursor-default resize-none rounded-xl bg-[#F8F8FF] px-4 py-3 text-sm leading-relaxed text-[#0F172A] outline-none"
-              />
+              {hasSlides(body) ? (
+                <div className="space-y-2">
+                  {parseSlides(body).map((slide, i) => (
+                    <div key={i} className="rounded-xl bg-[#F8F8FF] px-4 py-3">
+                      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">Slide {i + 1}</p>
+                      <p className="whitespace-pre-line text-sm leading-relaxed text-[#0F172A]">{slide}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <textarea
+                  ref={textareaRef}
+                  value={body}
+                  readOnly
+                  rows={Math.max(4, body.split("\n").length + 2)}
+                  className="w-full cursor-default resize-none rounded-xl bg-[#F8F8FF] px-4 py-3 text-sm leading-relaxed text-[#0F172A] outline-none"
+                />
+              )}
               <p className="mt-1 text-right text-xs text-[#94A3B8]">{wordCount} words</p>
             </div>
           )}
@@ -988,7 +1014,7 @@ export default function ContentPage() {
         contentType === "instagram_caption"
           ? contentLength === "extra_short" ? 50 : contentLength === "short" ? 100 : contentLength === "medium" ? 200 : contentLength === "long" ? 300 : null
           : contentType === "reel_script"
-          ? contentLength === "7s" ? 20 : contentLength === "15s" ? 45 : contentLength === "30s" ? 90 : contentLength === "60s" ? 160 : null
+          ? contentLength === "7s" ? 20 : contentLength === "15s" ? 40 : contentLength === "30s" ? 80 : contentLength === "60s" ? 160 : null
           : null;
       console.log("[wordcount] setup — contentType:", JSON.stringify(contentType), "contentLength:", JSON.stringify(contentLength), "maxCaptionWords:", maxCaptionWords, "rawVariations:", rawVariations.length);
       const inserts = rawVariations.map(v => {
@@ -1004,9 +1030,10 @@ export default function ContentPage() {
           body,
           platform:       null,
           status:     "generated",
-          draft_hook: v.hook ? cleanContent(v.hook) : null,
-          draft_body: v.body ? cleanContent(v.body) : null,
-          draft_cta:  v.cta  ? cleanContent(v.cta)  : null,
+          // Reels display as a single spoken block — don't break into labelled sections
+          draft_hook: contentType === "reel_script" ? null : (v.hook ? cleanContent(v.hook) : null),
+          draft_body: contentType === "reel_script" ? null : (v.body ? cleanContent(v.body) : null),
+          draft_cta:  contentType === "reel_script" ? null : (v.cta  ? cleanContent(v.cta)  : null),
           media_type:      matchMedia ? mediaType : null,
           media_year_from: matchMedia ? mediaYearFrom : null,
           media_year_to:   matchMedia ? mediaYearTo   : null,
