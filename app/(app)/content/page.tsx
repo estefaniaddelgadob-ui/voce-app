@@ -985,10 +985,12 @@ export default function ContentPage() {
           ? contentLength === "7s" ? 20 : contentLength === "15s" ? 45 : contentLength === "30s" ? 90 : contentLength === "60s" ? 160 : null
           : null;
       const inserts = rawVariations.map(v => {
-        const cleaned = cleanContent(v.full_caption ?? v.content ?? "");
+        const rawCaption = v.full_caption ?? v.content ?? "";
+        console.log("[wordcount] before:", rawCaption.split(" ").length, "| limit:", maxCaptionWords);
+        const cleaned = cleanContent(rawCaption);
         const body    = maxCaptionWords ? enforceWordLimit(cleaned, maxCaptionWords) : cleaned;
         const wc      = body.split(/\s+/).filter(Boolean).length;
-        console.log("[generate] word count:", wc, "| target length:", contentLength);
+        console.log("[wordcount] after enforcement:", wc, "| target:", contentLength);
         return {
           user_id:        user.id,
           title:          topic,
@@ -1020,7 +1022,9 @@ export default function ContentPage() {
           : "";
         setError(`Content generated but couldn't save to database: ${saveErr.message}.${sqlHint}`);
         const tempDrafts = rawVariations.map((v, i) => {
-          const body = cleanContent(v.full_caption ?? v.content ?? "");
+          const rawCaption = v.full_caption ?? v.content ?? "";
+          const tempCleaned = cleanContent(rawCaption);
+          const body = maxCaptionWords ? enforceWordLimit(tempCleaned, maxCaptionWords) : tempCleaned;
           return {
             id:              `temp-${Date.now()}-${i}`,
             title:           topic,
@@ -1046,8 +1050,6 @@ export default function ContentPage() {
       }
 
       setGenOpen(false);
-      // Scroll to library
-      setTimeout(() => libraryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 200);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Generation failed";
       console.error("[generate] error:", msg);
