@@ -984,13 +984,14 @@ export default function ContentPage() {
           : contentType === "reel_script"
           ? contentLength === "7s" ? 20 : contentLength === "15s" ? 45 : contentLength === "30s" ? 90 : contentLength === "60s" ? 160 : null
           : null;
+      console.log("[wordcount] setup — contentType:", JSON.stringify(contentType), "contentLength:", JSON.stringify(contentLength), "maxCaptionWords:", maxCaptionWords, "rawVariations:", rawVariations.length);
       const inserts = rawVariations.map(v => {
         const rawCaption = v.full_caption ?? v.content ?? "";
-        console.log("[wordcount] before:", rawCaption.split(" ").length, "| limit:", maxCaptionWords);
+        console.log("[wordcount] full_caption words:", rawCaption.split(" ").length, "limit:", maxCaptionWords, "contentType:", contentType, "length:", contentLength);
         const cleaned = cleanContent(rawCaption);
         const body    = maxCaptionWords ? enforceWordLimit(cleaned, maxCaptionWords) : cleaned;
         const wc      = body.split(/\s+/).filter(Boolean).length;
-        console.log("[wordcount] after enforcement:", wc, "| target:", contentLength);
+        console.log("[wordcount] after enforcement:", wc, "enforced:", maxCaptionWords !== null);
         return {
           user_id:        user.id,
           title:          topic,
@@ -1042,7 +1043,11 @@ export default function ContentPage() {
         });
         setDrafts(prev => [...tempDrafts, ...prev]);
       } else if (saved) {
-        setDrafts(prev => [...(saved as ContentDraft[]), ...prev]);
+        const savedDrafts = (saved as ContentDraft[]).map(d => ({
+          ...d,
+          body: maxCaptionWords ? enforceWordLimit(d.body, maxCaptionWords) : d.body,
+        }));
+        setDrafts(prev => [...savedDrafts, ...prev]);
         setGenSuccessMsg(`${saved.length} post${saved.length !== 1 ? "s" : ""} generated ✓`);
         setTimeout(() => setGenSuccessMsg(null), 4000);
         setLibraryFilter("generated"); // auto-switch so user sees new content immediately
