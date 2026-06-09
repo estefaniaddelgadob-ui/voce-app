@@ -116,9 +116,19 @@ Write a ${(audience.primary_platform || "social media")} post. Return ONLY valid
       return `\nSTYLE REFERENCES — accounts this creator admires (use as calibration, never copy):\n${list}\n\nFor each account you recognise, use your knowledge of their style, tone, energy and content structure as calibration points. What makes their content feel authentic? How do they open posts? How do they close? Channel that same energy into this creator's unique voice — never copy, always calibrate.`;
     })();
 
-    const notesBlock = (thoughtNotes as { transcript?: string; title?: string }[]).length > 0
-      ? (thoughtNotes as { transcript?: string; title?: string }[])
-          .map(n => `- ${n.transcript || n.title || ""}`).filter(Boolean).join("\n")
+    type ThoughtNote = { title?: string; transcript?: string; ideas?: string; standout_phrases?: string; themes?: string; created_at?: string; };
+    const notes = thoughtNotes as ThoughtNote[];
+    const notesBlock = notes.length > 0
+      ? notes.map((n, i) => {
+          const dateStr = n.created_at ? ` [${new Date(n.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}]` : "";
+          const parts: string[] = [`Note ${i + 1}${dateStr}:`];
+          if (n.transcript) parts.push(`Transcript: ${n.transcript}`);
+          if (n.ideas) parts.push(`Key ideas: ${n.ideas}`);
+          if (n.standout_phrases) parts.push(`Their exact phrases: ${n.standout_phrases}`);
+          if (n.themes) parts.push(`Themes: ${n.themes}`);
+          if (!n.transcript && !n.ideas && n.title) parts.push(`Title: ${n.title}`);
+          return parts.length > 1 ? parts.join("\n") : "";
+        }).filter(Boolean).join("\n\n")
       : "No recent notes.";
 
     const audienceBlock = [
@@ -148,7 +158,8 @@ Write a ${(audience.primary_platform || "social media")} post. Return ONLY valid
 
     const lengthInstruction = (() => {
       if (contentType === "instagram_caption") {
-        if (length === "short")  return "\nSTRICT LIMIT: 50-80 words total. Count every word. Stop at 80 words maximum. If your draft exceeds 80 words, cut it down.";
+        if (length === "extra_short") return "\nSTRICT LIMIT: 30-50 words total. One single punchy thought. No more. If your draft exceeds 50 words, cut it down aggressively.";
+        if (length === "short")  return "\nSTRICT LIMIT: 80-100 words total. Count every word.";
         if (length === "medium") return "\nSTRICT LIMIT: 150-200 words total. Count every word.";
         if (length === "long")   return "\nSTRICT LIMIT: 250-300 words total. Count every word.";
       }
@@ -180,11 +191,22 @@ Write a ${(audience.primary_platform || "social media")} post. Return ONLY valid
       ? `\nMedia preference: ${mediaType === "photos" ? "suggest image descriptions only — no video clips" : "suggest video clip descriptions only — no static images"}`
       : "";
 
+    console.log("[prompt] persona fields:", {
+      hasStyleFingerprint: !!persona?.style_fingerprint,
+      hasNiche: !!persona?.niche,
+      hasTone: !!(persona?.tone_words?.length),
+      hasBeliefs: !!persona?.beliefs,
+      hasNeverSay: !!persona?.never_say,
+      notesCount: notes.length,
+      firstNotePreview: notes[0]?.transcript?.slice(0, 100),
+    });
+
     const userMessage = `Creator persona:
 ${personaBlock}
 ${samplesBlock}${refsBlock}
 
-Recent thoughts and voice notes:
+VOICE NOTES AND THOUGHTS FROM THIS CREATOR
+(study these carefully — this is how they actually think and speak):
 ${notesBlock}
 
 Target audience:

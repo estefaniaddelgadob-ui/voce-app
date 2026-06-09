@@ -82,9 +82,10 @@ const LIBRARY_TABS: { id: LibraryFilter; label: string }[] = [
 
 const LENGTH_OPTIONS: Partial<Record<ContentType, { id: string; label: string; tip: string }[]>> = {
   instagram_caption: [
-    { id: "short",  label: "Short",     tip: "50–100 words — best for reach."          },
-    { id: "medium", label: "Medium",    tip: "100–200 words — storytelling sweet spot." },
-    { id: "long",   label: "Long",      tip: "200–300 words — great for saves."         },
+    { id: "extra_short", label: "Extra Short", tip: "30–50 words — one punchy thought."         },
+    { id: "short",       label: "Short",       tip: "80–100 words — best for reach."            },
+    { id: "medium",      label: "Medium",      tip: "150–200 words — storytelling sweet spot."  },
+    { id: "long",        label: "Long",        tip: "250–300 words — great for saves."          },
   ],
   carousel_script: [
     { id: "3",  label: "3 slides",  tip: "Quick and punchy — best for reach."    },
@@ -606,6 +607,7 @@ Write a completely different version that addresses these specific issues. ` +
       }
     } else {
       setEditing(true);
+      setExpanded(true);
       setTimeout(() => { textareaRef.current?.focus(); }, 10);
     }
   }
@@ -635,16 +637,68 @@ Write a completely different version that addresses these specific issues. ` +
         </div>
       </button>
 
-      {/* Expanded */}
+      {/* Error — always visible */}
+      {cardError && (
+        <div className="mx-4 mb-1 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {cardError}
+        </div>
+      )}
+
+      {/* Edit | Copy | Regenerate — always visible */}
+      <div className="grid grid-cols-3 gap-px border-t border-[#F4F4F2] bg-[#F4F4F2]">
+        <button onClick={toggleEdit}
+          className={`flex min-h-[40px] items-center justify-center gap-1.5 bg-white text-xs font-medium transition ${
+            editing ? "text-voce-indigo" : "text-[#64748B] hover:text-voce-indigo"
+          }`}>
+          {saveState === "saving"
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            : saveState === "saved" && !editing
+            ? <><CheckCircle2 className="h-3.5 w-3.5 text-voce-teal" /><span className="text-voce-teal">Saved</span></>
+            : <><Edit2 className="h-3.5 w-3.5" />{editing ? " Done" : " Edit"}</>}
+        </button>
+        <button onClick={handleCopy}
+          className="flex min-h-[40px] items-center justify-center gap-1.5 bg-white text-xs font-medium text-[#64748B] transition hover:text-voce-indigo">
+          {copyState === "copied"
+            ? <><CheckCircle2 className="h-3.5 w-3.5 text-voce-teal" /><span className="text-voce-teal">Copied</span></>
+            : <><Copy className="h-3.5 w-3.5" /> Copy</>}
+        </button>
+        <button onClick={() => { setShowFeedback(v => !v); setFeedback([]); }}
+          className={`flex min-h-[40px] items-center justify-center gap-1.5 bg-white text-xs font-medium transition ${
+            showFeedback ? "text-amber-700" : "text-[#64748B] hover:text-amber-700"
+          }`}>
+          {regenerating
+            ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</>
+            : <><RefreshCw className="h-3.5 w-3.5" /> Regenerate</>}
+        </button>
+      </div>
+
+      {/* Feedback chips — shown when Regenerate clicked */}
+      {showFeedback && (
+        <div className="border-t border-[#F4F4F2] space-y-2 px-4 py-3">
+          <p className="text-xs font-medium text-[#64748B]">What was off?</p>
+          <div className="flex flex-wrap gap-1.5">
+            {FEEDBACK_REASONS.map(r => (
+              <button key={r} type="button" onClick={() => toggleFeedback(r)}
+                className={["rounded-full px-2.5 py-1 text-xs font-medium transition",
+                  feedback.includes(r) ? "bg-amber-100 text-amber-700" : "border border-[#E2E2E0] text-[#64748B] hover:border-amber-300"].join(" ")}>
+                {r}
+              </button>
+            ))}
+          </div>
+          {feedback.length > 0 && (
+            <button onClick={handleRegenerate} disabled={regenerating}
+              className="flex min-h-[36px] w-full items-center justify-center gap-2 rounded-lg bg-voce-indigo text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60">
+              {regenerating
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Regenerating…</>
+                : <><RefreshCw className="h-3.5 w-3.5" /> Regenerate with feedback</>}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Expanded — full caption + approve + delete */}
       {expanded && (
         <div className="border-t border-[#E2E2E0] px-4 pb-5 pt-4 space-y-4">
-
-          {/* Error */}
-          {cardError && (
-            <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {cardError}
-            </div>
-          )}
 
           {/* Content display — structured when hook/body/cta available, textarea when editing */}
           {editing ? (
@@ -697,61 +751,7 @@ Write a completely different version that addresses these specific issues. ` +
             </div>
           )}
 
-          {/* ── Row 1: Edit | Copy | Regenerate ── */}
-          <div className="grid grid-cols-3 gap-2">
-            <button onClick={toggleEdit}
-              className={`flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border text-xs font-medium transition ${
-                editing
-                  ? "border-voce-indigo bg-voce-indigo/5 text-voce-indigo"
-                  : "border-[#E2E2E0] text-[#64748B] hover:border-voce-indigo/50 hover:text-voce-indigo"
-              }`}>
-              {saveState === "saving" ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                : saveState === "saved" && !editing ? <><CheckCircle2 className="h-3.5 w-3.5 text-voce-teal" /><span className="text-voce-teal">Saved</span></>
-                : <><Edit2 className="h-3.5 w-3.5" />{editing ? "Done" : "Edit"}</>}
-            </button>
-            <button onClick={handleCopy}
-              className="flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-[#E2E2E0] text-xs font-medium text-[#64748B] transition hover:border-voce-indigo/50 hover:text-voce-indigo">
-              {copyState === "copied"
-                ? <><CheckCircle2 className="h-3.5 w-3.5 text-voce-teal" /><span className="text-voce-teal">Copied</span></>
-                : <><Copy className="h-3.5 w-3.5" /> Copy</>}
-            </button>
-            <button onClick={() => { setShowFeedback(v => !v); setFeedback([]); }}
-              className={`flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border text-xs font-medium transition ${
-                showFeedback
-                  ? "border-amber-300 bg-amber-50 text-amber-700"
-                  : "border-[#E2E2E0] text-[#64748B] hover:border-amber-300 hover:text-amber-700"
-              }`}>
-              {regenerating
-                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</>
-                : <><RefreshCw className="h-3.5 w-3.5" /> Regenerate</>}
-            </button>
-          </div>
-
-          {/* Feedback chips — shown when Regenerate is clicked */}
-          {showFeedback && (
-            <div className="space-y-2 rounded-xl bg-[#FAFAF8] p-3">
-              <p className="text-xs font-medium text-[#64748B]">What was off?</p>
-              <div className="flex flex-wrap gap-1.5">
-                {FEEDBACK_REASONS.map(r => (
-                  <button key={r} type="button" onClick={() => toggleFeedback(r)}
-                    className={["rounded-full px-2.5 py-1 text-xs font-medium transition",
-                      feedback.includes(r) ? "bg-amber-100 text-amber-700" : "border border-[#E2E2E0] text-[#64748B] hover:border-amber-300"].join(" ")}>
-                    {r}
-                  </button>
-                ))}
-              </div>
-              {feedback.length > 0 && (
-                <button onClick={handleRegenerate} disabled={regenerating}
-                  className="flex min-h-[36px] w-full items-center justify-center gap-2 rounded-lg bg-voce-indigo text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60">
-                  {regenerating
-                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Regenerating…</>
-                    : <><RefreshCw className="h-3.5 w-3.5" /> Regenerate with feedback</>}
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* ── Row 2: Approve (only when not approved/published) ── */}
+          {/* ── Approve (only when not approved/published) ── */}
           {!isApproved && !isPublished && (
             <button onClick={handleApprove} disabled={approving || deleting}
               className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-voce-indigo text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60">
@@ -913,7 +913,7 @@ export default function ContentPage() {
 
       const [personaRes, thoughtsRes] = await Promise.all([
         supabase.from("persona_profile").select("*").eq("user_id", user.id).single(),
-        supabase.from("thought_notes").select("title, transcript")
+        supabase.from("thought_notes").select("title, transcript, ideas, standout_phrases, themes, created_at")
           .eq("user_id", user.id).eq("status", "processed")
           .order("created_at", { ascending: false }).limit(10),
       ]);
@@ -966,7 +966,7 @@ export default function ContentPage() {
       // and audience platforms may contain values outside that list (tiktok, facebook, etc.)
       const maxCaptionWords =
         contentType === "instagram_caption"
-          ? contentLength === "short" ? 80 : contentLength === "medium" ? 200 : contentLength === "long" ? 300 : null
+          ? contentLength === "extra_short" ? 50 : contentLength === "short" ? 100 : contentLength === "medium" ? 200 : contentLength === "long" ? 300 : null
           : contentType === "reel_script"
           ? contentLength === "7s" ? 20 : contentLength === "15s" ? 45 : contentLength === "30s" ? 90 : contentLength === "60s" ? 160 : null
           : null;
@@ -1037,6 +1037,7 @@ export default function ContentPage() {
         setGenSuccessMsg(`${saved.length} post${saved.length !== 1 ? "s" : ""} generated ✓`);
         setTimeout(() => setGenSuccessMsg(null), 4000);
         setLibraryFilter("generated"); // auto-switch so user sees new content immediately
+        setTopic("");
         reloadDrafts();
       }
 
