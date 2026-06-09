@@ -52,10 +52,13 @@ function errMsg(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "object" && err !== null) {
     const e = err as Record<string, unknown>;
-    if (typeof e.message === "string") return e.message;
-    if (typeof e.details === "string") return e.details;
-    if (typeof e.code   === "string") return `DB error ${e.code}`;
-    return JSON.stringify(e);
+    const parts = [
+      typeof e.message === "string" ? e.message                : null,
+      typeof e.code    === "string" ? `code: ${e.code}`        : null,
+      typeof e.details === "string" ? `details: ${e.details}`  : null,
+      typeof e.hint    === "string" ? `hint: ${e.hint}`        : null,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(" | ") : JSON.stringify(e);
   }
   return String(err);
 }
@@ -314,16 +317,34 @@ async function saveNote(
     status:           "processed",
   };
 
-  console.log("[saveNote] inserting with type:", payload.type, "| themes:", JSON.stringify(finalThemes), "| duration:", payload.duration_seconds);
+  console.log("[saveNote] payload diagnostics:", {
+    type:              payload.type,
+    status:            payload.status,
+    title_len:         payload.title?.length,
+    title_preview:     payload.title?.slice(0, 80),
+    transcript_len:    finalTranscript.length,
+    transcript_words:  finalTranscript.split(/\s+/).filter(Boolean).length,
+    transcript_first:  finalTranscript.slice(0, 100),
+    themes_count:      finalThemes.length,
+    themes:            JSON.stringify(finalThemes),
+    raw_ideas_type:    typeof finalAnalysis,
+    raw_ideas_keys:    Object.keys(finalAnalysis),
+    ideas_count:       (finalAnalysis as Analysis).ideas?.length,
+    duration_seconds:  payload.duration_seconds,
+  });
 
   const response = await supabase.from("thought_notes").insert(payload).select();
 
   if (response.error) {
-    console.error("[saveNote] DB error:", JSON.stringify(response.error, null, 2));
-    // Re-throw with a more readable message including the hint if available
-    const dbErr = response.error as unknown as Record<string, unknown>;
-    const detail = [dbErr.message, dbErr.details, dbErr.hint].filter(Boolean).join(" — ");
-    throw new Error(detail || JSON.stringify(dbErr));
+    const e = response.error;
+    console.error("[saveNote] FULL DB error:", JSON.stringify(e, null, 2));
+    const parts = [
+      e.message,
+      e.code    ? `code: ${e.code}`       : "",
+      e.details ? `details: ${e.details}` : "",
+      e.hint    ? `hint: ${e.hint}`       : "",
+    ].filter(Boolean);
+    throw new Error(parts.join(" | "));
   }
 
   console.log("[saveNote] saved successfully, id:", response.data?.[0]?.id);
