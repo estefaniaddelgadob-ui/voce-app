@@ -89,16 +89,20 @@ Write a ${(audience.primary_platform || "social media")} post. Return ONLY valid
     // ── Multi-variation path ──────────────────────────────────────────────────
 
     const personaBlock = [
-      persona.style_fingerprint
-        ? `Style fingerprint: ${persona.style_fingerprint}`
-        : [
-            persona.tone_words?.length ? `Tone: ${persona.tone_words.join(", ")}` : "",
-            persona.tone_description   ? `Voice: ${persona.tone_description}` : "",
-            persona.beliefs            ? `Beliefs: ${persona.beliefs}` : "",
-          ].filter(Boolean).join("\n"),
-      persona.niche            ? `Niche: ${persona.niche}` : "",
-      persona.recurring_themes ? `Recurring themes: ${persona.recurring_themes}` : "",
-      persona.pushback         ? `Pushes back on: ${persona.pushback}` : "",
+      persona.instagram_handle        ? `INSTAGRAM HANDLE: @${persona.instagram_handle}` : "",
+      persona.instagram_growth_handle ? `GROWTH ACCOUNT: @${persona.instagram_growth_handle}` : "",
+      persona.niche                   ? `NICHE: ${persona.niche}` : "",
+      persona.audience                ? `TARGET AUDIENCE: ${persona.audience}` : "",
+      (persona.transformation_before || persona.transformation_after)
+        ? `TRANSFORMATION: Before — ${persona.transformation_before || "not specified"} → After — ${persona.transformation_after || "not specified"}` : "",
+      (persona.tone_words as string[] | undefined)?.length
+        ? `TONE: ${(persona.tone_words as string[]).join(", ")}` : "",
+      persona.tone_description        ? `IN THEIR OWN WORDS THEIR TONE IS: ${persona.tone_description}` : "",
+      persona.beliefs                 ? `BELIEFS: ${persona.beliefs}` : "",
+      persona.recurring_themes        ? `RECURRING THEMES: ${persona.recurring_themes}` : "",
+      persona.pushback                ? `PUSHBACK (what they stand against): ${persona.pushback}` : "",
+      persona.never_say               ? `NEVER USE THESE WORDS: ${persona.never_say}` : "",
+      persona.style_fingerprint       ? `AI STYLE FINGERPRINT:\n${persona.style_fingerprint}` : "",
     ].filter(Boolean).join("\n");
 
     const samplesBlock = (persona.sample_captions as string[])?.filter(Boolean).length > 0
@@ -158,10 +162,10 @@ Write a ${(audience.primary_platform || "social media")} post. Return ONLY valid
 
     const lengthInstruction = (() => {
       if (contentType === "instagram_caption") {
-        if (length === "extra_short") return "\nSTRICT LIMIT: 30-50 words total. One single punchy thought. No more. If your draft exceeds 50 words, cut it down aggressively.";
-        if (length === "short")  return "\nSTRICT LIMIT: 80-100 words total. Count every word.";
-        if (length === "medium") return "\nSTRICT LIMIT: 150-200 words total. Count every word.";
-        if (length === "long")   return "\nSTRICT LIMIT: 250-300 words total. Count every word.";
+        if (length === "extra_short") return "\nWrite 30-50 words for the caption body. Not including hashtags. Minimum 30 words, maximum 50 words. One single punchy thought.";
+        if (length === "short")  return "\nWrite 80-100 words for the caption body. Not including hashtags. Minimum 80 words, maximum 100 words.";
+        if (length === "medium") return "\nWrite 150-200 words for the caption body. Not including hashtags. Minimum 150 words, maximum 200 words.";
+        if (length === "long")   return "\nWrite 250-300 words for the caption body. Not including hashtags. Minimum 250 words, maximum 300 words.";
       }
       if (contentType === "carousel_script") {
         if (length === "3")  return "\nSTRICT LIMIT: 40 words per slide maximum. 3 slides total. One clear idea per slide.";

@@ -132,10 +132,23 @@ function cleanContent(text: string): string {
     .trim();
 }
 
+function countWords(text: string): number {
+  return text
+    .split("\n")
+    .filter(line => !line.trim().startsWith("#"))
+    .join(" ")
+    .split(/\s+/)
+    .filter(w => w.length > 0 && !w.startsWith("#"))
+    .length;
+}
+
 function enforceWordLimit(text: string, maxWords: number): string {
-  const words = text.trim().split(/\s+/);
-  if (words.length <= maxWords) return text;
-  return words.slice(0, maxWords).join(" ") + "...";
+  if (countWords(text) <= maxWords) return text;
+  const allWords     = text.trim().split(/\s+/);
+  const bodyWords    = allWords.filter(w => !w.startsWith("#"));
+  const hashtagWords = allWords.filter(w => w.startsWith("#"));
+  const truncated    = bodyWords.slice(0, maxWords).join(" ") + "...";
+  return hashtagWords.length > 0 ? `${truncated}\n\n${hashtagWords.join(" ")}` : truncated;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -405,11 +418,12 @@ function MediaSuggestions({ body, mediaType = "both", photosConnected = false, y
 
 // ── Content draft card ─────────────────────────────────────────────────────────
 
-function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected }: {
+function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, isNew = false }: {
   draft: ContentDraft;
   onStatusChange: (id: string, status: string) => void;
   onDelete: (id: string) => void;
   photosConnected: boolean;
+  isNew?: boolean;
 }) {
   const [expanded,      setExpanded]     = useState(false);
   const [body,          setBody]         = useState(draft.body);
@@ -622,6 +636,11 @@ Write a completely different version that addresses these specific issues. ` +
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex flex-wrap items-center gap-2">
             <StatusBadge status={status} />
+            {isNew && (
+              <span className="rounded-full bg-voce-indigo px-2.5 py-0.5 text-[11px] font-semibold text-white">
+                New ✨
+              </span>
+            )}
             <span className="text-xs text-[#94A3B8]">{fmtDate(draft.created_at)}</span>
           </div>
           <p className="line-clamp-1 text-sm text-[#0F172A]">{previewLine}</p>
@@ -824,6 +843,7 @@ export default function ContentPage() {
   const [libraryFilter,    setLibraryFilter]    = useState<LibraryFilter>("generated");
   const [genSuccessMsg,    setGenSuccessMsg]    = useState<string | null>(null);
   const [photosConnected,  setPhotosConnected]  = useState(false);
+  const [newDraftIds,      setNewDraftIds]      = useState<Set<string>>(new Set());
   const libraryRef = useRef<HTMLDivElement>(null);
 
   // Reload drafts whenever the user returns to this browser tab
@@ -1034,6 +1054,11 @@ export default function ContentPage() {
           body: maxCaptionWords ? enforceWordLimit(d.body, maxCaptionWords) : d.body,
         }));
         setDrafts(prev => [...savedDrafts, ...prev]);
+        const newIds = savedDrafts.map(d => d.id);
+        setNewDraftIds(prev => new Set([...Array.from(prev), ...newIds]));
+        setTimeout(() => {
+          setNewDraftIds(prev => { const next = new Set(Array.from(prev)); newIds.forEach(id => next.delete(id)); return next; });
+        }, 30000);
         setGenSuccessMsg(`${saved.length} post${saved.length !== 1 ? "s" : ""} generated ✓`);
         setTimeout(() => setGenSuccessMsg(null), 4000);
         setLibraryFilter("generated"); // auto-switch so user sees new content immediately
@@ -1383,6 +1408,7 @@ export default function ContentPage() {
                 onStatusChange={handleStatusChange}
                 onDelete={handleDeleteDraft}
                 photosConnected={photosConnected}
+                isNew={newDraftIds.has(d.id)}
               />
             ))}
           </div>
