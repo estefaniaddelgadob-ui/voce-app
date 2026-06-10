@@ -29,6 +29,8 @@ interface ContentDraft {
   media_type: string | null;
   media_year_from: string | null;
   media_year_to: string | null;
+  content_type: string | null;
+  length: string | null;
 }
 
 interface Audience {
@@ -147,7 +149,19 @@ function enforceWordLimit(text: string, maxWords: number): string {
   const allWords     = text.trim().split(/\s+/);
   const bodyWords    = allWords.filter(w => !w.startsWith("#"));
   const hashtagWords = allWords.filter(w => w.startsWith("#"));
-  const truncated    = bodyWords.slice(0, maxWords).join(" ") + "...";
+
+  // Try to end at a complete sentence within maxWords + small buffer
+  const candidate = bodyWords.slice(0, maxWords + 10).join(" ");
+  const sentences  = candidate.match(/[^.!?]+[.!?]+/g) ?? [];
+  let result = "";
+  let wc = 0;
+  for (const sentence of sentences) {
+    const sw = sentence.split(/\s+/).length;
+    if (wc + sw <= maxWords + 10) { result += sentence; wc += sw; }
+    else break;
+  }
+
+  const truncated = result.trim() || bodyWords.slice(0, maxWords).join(" ") + "...";
   return hashtagWords.length > 0 ? `${truncated}\n\n${hashtagWords.join(" ")}` : truncated;
 }
 
@@ -433,12 +447,13 @@ function MediaSuggestions({ body, mediaType = "both", photosConnected = false, y
 
 // ── Content draft card ─────────────────────────────────────────────────────────
 
-function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, isNew = false }: {
+function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, isNew = false, onRead }: {
   draft: ContentDraft;
   onStatusChange: (id: string, status: string) => void;
   onDelete: (id: string) => void;
   photosConnected: boolean;
   isNew?: boolean;
+  onRead?: (id: string) => void;
 }) {
   const [expanded,      setExpanded]     = useState(false);
   const [body,          setBody]         = useState(draft.body);
@@ -558,7 +573,11 @@ Write a completely different version that addresses these specific issues. ` +
           : "") +
         "Every word must sound like it came from them, no one else.";
 
-      console.log("[regenerate] calling API with feedback:", feedback.join(", "), "| topic:", draft.title);
+      const draftContentType = (draft.content_type ?? "instagram_caption") as ContentType;
+      const draftLength      = draft.length ?? undefined;
+      const isReelRegen      = draftContentType === "reel_script";
+
+      console.log("[regenerate] calling API with feedback:", feedback.join(", "), "| topic:", draft.title, "| contentType:", draftContentType);
 
       const res = await fetch("/api/generate-content", {
         method:  "POST",
@@ -568,7 +587,8 @@ Write a completely different version that addresses these specific issues. ` +
           persona:         personaRes.data,
           audience:        { name: "General", platforms: [draft.platform ?? "instagram"] },
           thoughtNotes:    thoughtsRes.data ?? [],
-          contentType:     "instagram_caption",
+          contentType:     draftContentType,
+          length:          draftLength,
           variations:      1,
           toneOverride:    "persona",
           feedbackContext,
@@ -593,16 +613,16 @@ Write a completely different version that addresses these specific issues. ` +
 
       // Update both local state AND the DB
       setBody(newBody);
-      setDraftHook(variation.hook ? cleanContent(variation.hook) : null);
-      setDraftBody(variation.body ? cleanContent(variation.body) : null);
-      setDraftCta(variation.cta  ? cleanContent(variation.cta)  : null);
+      setDraftHook(isReelRegen ? null : (variation.hook ? cleanContent(variation.hook) : null));
+      setDraftBody(isReelRegen ? null : (variation.body ? cleanContent(variation.body) : null));
+      setDraftCta(isReelRegen  ? null : (variation.cta  ? cleanContent(variation.cta)  : null));
       setFeedback([]);
 
       const { error: updateErr } = await supabase.from("content_drafts").update({
         body:           newBody,
-        draft_hook:     variation.hook ? cleanContent(variation.hook) : null,
-        draft_body:     variation.body ? cleanContent(variation.body) : null,
-        draft_cta:      variation.cta  ? cleanContent(variation.cta)  : null,
+        draft_hook:     isReelRegen ? null : (variation.hook ? cleanContent(variation.hook) : null),
+        draft_body:     isReelRegen ? null : (variation.body ? cleanContent(variation.body) : null),
+        draft_cta:      isReelRegen ? null : (variation.cta  ? cleanContent(variation.cta)  : null),
         algorithm_note: `Regenerated after rejection: ${feedback.join(", ")}`,
       }).eq("id", draft.id);
 
@@ -649,7 +669,11 @@ Write a completely different version that addresses these specific issues. ` +
     <div className="rounded-xl border border-[#E2E2E0] bg-white overflow-hidden">
       {/* Collapsed row */}
       <button
-        onClick={() => setExpanded(v => !v)}
+        onClick={() => {
+          const opening = !expanded;
+          setExpanded(opening);
+          if (opening) onRead?.(draft.id);
+        }}
         className="flex w-full items-start gap-3 p-4 text-left transition hover:bg-[#FAFAF8]"
       >
         <div className="min-w-0 flex-1">
@@ -1033,7 +1057,9 @@ export default function ContentPage() {
           title:          topic,
           body,
           platform:       null,
-          status:     "generated",
+          status:       "generated",
+          content_type: contentType,
+          length:       contentLength,
           // Reels display as a single spoken block — don't break into labelled sections
           draft_hook: contentType === "reel_script" ? null : (v.hook ? cleanContent(v.hook) : null),
           draft_body: contentType === "reel_script" ? null : (v.body ? cleanContent(v.body) : null),
@@ -1068,9 +1094,11 @@ export default function ContentPage() {
             title:           topic,
             body,
             platform:        audience.platforms?.[0] ?? null,
-            status:          "generated",
-            created_at:      new Date().toISOString(),
-            draft_hook: v.hook ?? null,
+            status:       "generated",
+            content_type: contentType,
+            length:       contentLength,
+            created_at:   new Date().toISOString(),
+            draft_hook: contentType === "reel_script" ? null : (v.hook ?? null),
             draft_body: v.body ?? null,
             draft_cta:  v.cta  ?? null,
             media_type:      matchMedia ? mediaType     : null,
@@ -1087,9 +1115,6 @@ export default function ContentPage() {
         setDrafts(prev => [...savedDrafts, ...prev]);
         const newIds = savedDrafts.map(d => d.id);
         setNewDraftIds(prev => new Set([...Array.from(prev), ...newIds]));
-        setTimeout(() => {
-          setNewDraftIds(prev => { const next = new Set(Array.from(prev)); newIds.forEach(id => next.delete(id)); return next; });
-        }, 30000);
         setGenSuccessMsg(`${saved.length} post${saved.length !== 1 ? "s" : ""} generated ✓`);
         setTimeout(() => setGenSuccessMsg(null), 4000);
         setLibraryFilter("generated"); // auto-switch so user sees new content immediately
@@ -1099,7 +1124,7 @@ export default function ContentPage() {
 
       setGenOpen(false);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Generation failed";
+      const msg = err instanceof Error ? err.message : JSON.stringify(err);
       console.error("[generate] error:", msg);
       setError(`Something went wrong — ${msg}`);
     } finally {
@@ -1440,6 +1465,7 @@ export default function ContentPage() {
                 onDelete={handleDeleteDraft}
                 photosConnected={photosConnected}
                 isNew={newDraftIds.has(d.id)}
+                onRead={(id) => setNewDraftIds(prev => { const next = new Set(Array.from(prev)); next.delete(id); return next; })}
               />
             ))}
           </div>

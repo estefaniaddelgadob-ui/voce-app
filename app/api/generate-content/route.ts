@@ -195,6 +195,10 @@ Write a ${(audience.primary_platform || "social media")} post. Return ONLY valid
       ? `\nMedia preference: ${mediaType === "photos" ? "suggest image descriptions only — no video clips" : "suggest video clip descriptions only — no static images"}`
       : "";
 
+    if (contentType === "carousel_script") {
+      console.log("[carousel] slideCount:", length, "instruction:", lengthInstruction.trim().slice(0, 80));
+    }
+
     console.log("[prompt] persona fields:", {
       hasStyleFingerprint: !!persona?.style_fingerprint,
       hasNiche: !!persona?.niche,
