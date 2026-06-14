@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const PRODUCTION_URL = "https://voce-app.vercel.app";
+const PRODUCTION_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://echoooo.app";
 
 export async function GET(request: Request) {
   const url        = new URL(request.url);
   const baseUrl    = `${url.protocol}//${url.host}`;
-  const redirectUri = `${baseUrl}/api/auth/google-photos/callback`;
-  // Always redirect back to production after OAuth regardless of which
-  // Vercel URL received the callback, so the session lands in the right place.
+  // Must exactly match the redirect_uri sent in the OAuth initiation step
+  const redirectUri = process.env.NEXT_PUBLIC_APP_URL
+    ? `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/google-photos/callback`
+    : "https://echoooo.app/api/auth/google-photos/callback";
   const APP_URL    = PRODUCTION_URL;
+
+  console.log("[callback] redirectUri used:", redirectUri);
 
   const code  = url.searchParams.get("code");
   const state = url.searchParams.get("state");
