@@ -1,9 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 
-function extractJSON(text: string) {
-  const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  return match ? match[1] : text.trim();
+const extractJSON = (text: string): string => {
+  const stripped = text
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim()
+  return stripped
 }
 
 const SYSTEM_PROMPT = `You are a world-class cinematic content director with 20+ years in filmmaking, advertising and viral social media storytelling.
@@ -70,9 +74,11 @@ Match each photo/video to a moment in the content. Return JSON:
       }],
     });
 
-    const raw  = message.content[0].type === "text" ? message.content[0].text : "{}";
-    const data = JSON.parse(extractJSON(raw));
-    return NextResponse.json(data);
+    const rawText = message.content[0].type === "text" ? message.content[0].text : "{}";
+    console.log('[match-media] response length:', rawText.length)
+    console.log('[match-media] response tail:', rawText.slice(-300))
+    const parsed = JSON.parse(extractJSON(rawText));
+    return NextResponse.json(parsed);
   } catch (err) {
     console.error("[match-media] error:", err);
     return NextResponse.json({ error: "Media matching failed" }, { status: 500 });

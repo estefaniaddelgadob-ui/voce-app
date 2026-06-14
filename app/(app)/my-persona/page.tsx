@@ -164,13 +164,17 @@ function PersonaForm({ persona, onSaved }: { persona: PersonaProfile | null; onS
         pushback: form.pushback, reference_accounts: cleanRefs,
       }, { onConflict: "user_id" });
       if (dbErr) throw dbErr;
+      console.log('[fingerprint] calling generate-fingerprint API...');
       const res = await fetch("/api/generate-fingerprint", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ instagramHandle: form.instagram_handle, niche: form.niche, audience: form.audience, transformationBefore: form.transformation_before, transformationAfter: form.transformation_after, toneWords: form.tone_words, toneDescription: form.tone_description, neverSay: form.never_say, beliefs: form.beliefs, recurringThemes: form.recurring_themes, pushback: form.pushback, referenceAccounts: cleanRefs }),
       });
       const { fingerprint: newFp, error: fpErr } = await res.json();
       if (fpErr) throw new Error(fpErr);
-      await supabase.from("persona_profile").update({ style_fingerprint: newFp }).eq("user_id", user.id);
+      console.log('[fingerprint] generated, length:', newFp?.length, 'preview:', newFp?.slice(0, 80));
+      const { error: fpSaveErr } = await supabase.from("persona_profile").update({ style_fingerprint: newFp }).eq("user_id", user.id);
+      if (fpSaveErr) console.error('[fingerprint] save error:', fpSaveErr);
+      else console.log('[fingerprint] saved to style_fingerprint column successfully');
       setFp(newFp); setSaved(true); onSaved();
     } catch (err) { setError(errMsg(err)); }
     finally { setSaving(false); setGenning(false); }
@@ -180,15 +184,21 @@ function PersonaForm({ persona, onSaved }: { persona: PersonaProfile | null; onS
     setGenning(true); setError(null);
     try {
       const cleanRefs = form.reference_accounts.filter(r => r.handle.trim());
+      console.log('[fingerprint] regenerating from current form data...');
       const res = await fetch("/api/generate-fingerprint", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ instagramHandle: form.instagram_handle, niche: form.niche, audience: form.audience, transformationBefore: form.transformation_before, transformationAfter: form.transformation_after, toneWords: form.tone_words, toneDescription: form.tone_description, neverSay: form.never_say, beliefs: form.beliefs, recurringThemes: form.recurring_themes, pushback: form.pushback, referenceAccounts: cleanRefs }),
       });
       const { fingerprint: newFp, error: fpErr } = await res.json();
       if (fpErr) throw new Error(fpErr);
+      console.log('[fingerprint] regenerated, length:', newFp?.length, 'preview:', newFp?.slice(0, 80));
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) await supabase.from("persona_profile").update({ style_fingerprint: newFp }).eq("user_id", user.id);
+      if (user) {
+        const { error: fpSaveErr } = await supabase.from("persona_profile").update({ style_fingerprint: newFp }).eq("user_id", user.id);
+        if (fpSaveErr) console.error('[fingerprint] save error:', fpSaveErr);
+        else console.log('[fingerprint] saved to style_fingerprint column successfully');
+      }
       setFp(newFp); onSaved();
     } catch (err) { setError(errMsg(err)); }
     finally { setGenning(false); }
@@ -355,6 +365,12 @@ function PersonaForm({ persona, onSaved }: { persona: PersonaProfile | null; onS
               className="flex items-center gap-2 rounded-lg bg-voce-indigo px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60">
               {genning ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating fingerprint…</> : saved ? <><CheckCircle2 className="h-4 w-4" /> Saved</> : <><Sparkles className="h-4 w-4" /> Save &amp; generate style fingerprint</>}
             </button>
+            {!fp && (
+              <button onClick={regenerate} disabled={genning}
+                className="flex items-center gap-1.5 rounded-lg border border-[#E2E2E0] px-3 py-2.5 text-sm font-medium text-[#64748B] transition hover:bg-[#F4F4F2] disabled:opacity-50">
+                {genning ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Regenerate fingerprint
+              </button>
+            )}
             {saved && <p className="text-sm text-voce-teal">✓ Persona updated</p>}
           </div>
 
