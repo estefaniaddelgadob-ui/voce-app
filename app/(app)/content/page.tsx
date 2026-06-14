@@ -72,9 +72,6 @@ const FEEDBACK_REASONS = [
   "Not specific enough",
 ] as const;
 
-const THIS_YEAR    = new Date().getFullYear();
-const YEAR_OPTIONS = Array.from({ length: THIS_YEAR - 2017 }, (_, i) => String(2018 + i));
-
 const LIBRARY_TABS: { id: LibraryFilter; label: string }[] = [
   { id: "generated", label: "Generated" },
   { id: "approved",  label: "Approved"  },
@@ -884,9 +881,9 @@ export default function ContentPage() {
   const [contentLength,    setContentLength]    = useState<string>(DEFAULT_LENGTH["instagram_caption"] ?? "medium");
   const [outputLang,       setOutputLang]       = useState("English");
   const [matchMedia,       setMatchMedia]       = useState(false);
-  const [mediaType,        setMediaType]        = useState<"both" | "photos" | "videos">("both");
-  const [mediaYearFrom,    setMediaYearFrom]    = useState(String(THIS_YEAR - 1));
-  const [mediaYearTo,      setMediaYearTo]      = useState("present");
+  const [pickerPhotos,     setPickerPhotos]     = useState<{ id: string; baseUrl: string; mimeType: string; type: string }[]>([]);
+  const [pickerLoading,    setPickerLoading]    = useState(false);
+  const [pickerError,      setPickerError]      = useState<string | null>(null);
   const [generating,       setGenerating]       = useState(false);
   const [msgIdx,           setMsgIdx]           = useState(0);
   const [error,            setError]            = useState<string | null>(null);
@@ -938,6 +935,46 @@ export default function ContentPage() {
       if (data) setDrafts(data as ContentDraft[]);
     } catch (err) {
       console.error("[reloadDrafts] error:", err);
+    }
+  }
+
+  async function openGooglePhotosPicker() {
+    setPickerLoading(true); setPickerError(null);
+    try {
+      const sessionRes = await fetch("/api/photos/create-session", { method: "POST" });
+      const { sessionId, pickerUri, pollIntervalMs, error: sessErr } = await sessionRes.json();
+      if (sessErr) throw new Error(sessErr);
+
+      const popup = window.open(pickerUri, "GooglePhotosPicker", "width=650,height=750,scrollbars=yes,resizable=yes");
+      if (!popup) throw new Error("Popup blocked — please allow popups for this site and try again.");
+
+      await new Promise<void>((resolve, reject) => {
+        const interval = setInterval(async () => {
+          try {
+            if (popup.closed) {
+              clearInterval(interval);
+              // Final check after user closes popup
+              const finalRes = await fetch(`/api/photos/get-selected?sessionId=${sessionId}`);
+              const { ready, items, error: finalErr } = await finalRes.json();
+              if (finalErr) { reject(new Error(finalErr)); return; }
+              if (ready && items?.length > 0) setPickerPhotos(items);
+              resolve();
+              return;
+            }
+            const pollRes = await fetch(`/api/photos/get-selected?sessionId=${sessionId}`);
+            const { ready, items, error: pollErr } = await pollRes.json();
+            if (pollErr) { clearInterval(interval); popup.close(); reject(new Error(pollErr)); return; }
+            if (ready) { clearInterval(interval); popup.close(); setPickerPhotos(items ?? []); resolve(); }
+          } catch (e) { clearInterval(interval); popup.close(); reject(e); }
+        }, pollIntervalMs ?? 2000);
+
+        // 10 minute safety timeout
+        setTimeout(() => { clearInterval(interval); popup.close(); reject(new Error("Picker timed out — please try again.")); }, 600_000);
+      });
+    } catch (err) {
+      setPickerError(err instanceof Error ? err.message : "Failed to open photo picker");
+    } finally {
+      setPickerLoading(false);
     }
   }
 
@@ -996,11 +1033,6 @@ export default function ContentPage() {
       const audience = audiences.find(a => a.id === audienceId);
       if (!audience) throw new Error("Audience not found");
 
-      const mediaLabel = mediaType === "photos" ? "photos" : mediaType === "videos" ? "videos" : "photos and videos";
-      const mediaContext = matchMedia
-        ? `Match with ${mediaLabel} from ${mediaYearFrom} to ${mediaYearTo === "present" ? "now" : mediaYearTo}`
-        : null;
-
       console.log("[generate] calling API...");
       const res = await fetch("/api/generate-content", {
         method:  "POST",
@@ -1014,8 +1046,6 @@ export default function ContentPage() {
           length:       contentLength,
           variations,
           toneOverride,
-          mediaType:    matchMedia ? mediaType : null,
-          dateContext:  mediaContext,
         }),
       });
       const data = await res.json();
@@ -1064,9 +1094,9 @@ export default function ContentPage() {
           draft_hook: contentType === "reel_script" ? null : (v.hook ? cleanContent(v.hook) : null),
           draft_body: contentType === "reel_script" ? null : (v.body ? cleanContent(v.body) : null),
           draft_cta:  contentType === "reel_script" ? null : (v.cta  ? cleanContent(v.cta)  : null),
-          media_type:      matchMedia ? mediaType : null,
-          media_year_from: matchMedia ? mediaYearFrom : null,
-          media_year_to:   matchMedia ? mediaYearTo   : null,
+          media_type:      null,
+          media_year_from: null,
+          media_year_to:   null,
         };
       });
 
@@ -1101,9 +1131,9 @@ export default function ContentPage() {
             draft_hook: contentType === "reel_script" ? null : (v.hook ?? null),
             draft_body: v.body ?? null,
             draft_cta:  v.cta  ?? null,
-            media_type:      matchMedia ? mediaType     : null,
-            media_year_from: matchMedia ? mediaYearFrom : null,
-            media_year_to:   matchMedia ? mediaYearTo   : null,
+            media_type:      null,
+            media_year_from: null,
+            media_year_to:   null,
           } as ContentDraft;
         });
         setDrafts(prev => [...tempDrafts, ...prev]);
@@ -1321,19 +1351,19 @@ export default function ContentPage() {
                   </div>
                 </div>
 
-                {/* STEP 3 — Media (YES/NO always visible) */}
+                {/* STEP 3 — Photo picker */}
                 <div>
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#94A3B8]">
-                    Step 3 — Match with your media
+                    Step 3 — Add photos or videos
                     <span className="ml-2 font-normal normal-case text-[#94A3B8]">optional</span>
                   </p>
                   <p className="mb-2 text-sm font-medium text-[#0F172A]">
-                    Match content with photos/videos from my library?
+                    Select specific photos or videos to pair with this content?
                   </p>
                   <div className="flex gap-2">
                     {(["No", "Yes"] as const).map(opt => (
                       <button key={opt} type="button"
-                        onClick={() => setMatchMedia(opt === "Yes")}
+                        onClick={() => { setMatchMedia(opt === "Yes"); if (opt === "No") { setPickerPhotos([]); setPickerError(null); }}}
                         className={[
                           "flex h-11 w-20 items-center justify-center rounded-xl border text-sm font-semibold transition",
                           (opt === "Yes") === matchMedia
@@ -1346,52 +1376,63 @@ export default function ContentPage() {
                   </div>
 
                   {matchMedia && (
-                    <div className="mt-4 space-y-4 rounded-xl bg-[#F8F8FF] p-4">
-
-                      {/* Media type chips */}
-                      <div>
-                        <p className="mb-2 text-xs font-medium text-[#64748B]">Media type</p>
-                        <div className="flex flex-wrap gap-2">
-                          {([
-                            { id: "both",   label: "📷🎥 Both"         },
-                            { id: "photos", label: "📷 Photos only"    },
-                            { id: "videos", label: "🎥 Videos only"    },
-                          ] as const).map(opt => (
-                            <button key={opt.id} type="button" onClick={() => setMediaType(opt.id)}
-                              className={[
-                                "rounded-full px-3 py-1.5 text-sm font-medium transition",
-                                mediaType === opt.id
-                                  ? "bg-voce-indigo text-white"
-                                  : "border border-[#E2E2E0] text-[#64748B] hover:border-voce-indigo/50",
-                              ].join(" ")}>
-                              {opt.label}
+                    <div className="mt-4 rounded-xl bg-[#F8F8FF] p-4">
+                      {pickerPhotos.length === 0 ? (
+                        <div className="space-y-3">
+                          <p className="text-xs text-[#64748B]">
+                            Pick exactly the photos or videos you want to pair with this content.
+                          </p>
+                          {photosConnected ? (
+                            <button
+                              type="button"
+                              onClick={openGooglePhotosPicker}
+                              disabled={pickerLoading}
+                              className="flex w-full items-center justify-center gap-2 rounded-xl border border-voce-indigo bg-voce-indigo/5 px-4 py-3 text-sm font-medium text-voce-indigo transition hover:bg-voce-indigo/10 disabled:opacity-60"
+                            >
+                              {pickerLoading
+                                ? <><Loader2 className="h-4 w-4 animate-spin" /> Opening Google Photos…</>
+                                : <><Camera className="h-4 w-4" /> Select from Google Photos</>}
                             </button>
-                          ))}
+                          ) : (
+                            <div className="rounded-lg bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                              <a href="/settings" className="font-semibold underline">Connect Google Photos</a>
+                              {" "}in Settings first, then come back to pick photos.
+                            </div>
+                          )}
+                          {pickerError && <p className="text-xs text-red-500">{pickerError}</p>}
                         </div>
-                      </div>
-
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="mb-1.5 block text-xs font-medium text-[#64748B]">From year</label>
-                          <select value={mediaYearFrom} onChange={e => setMediaYearFrom(e.target.value)} className={inputCls}>
-                            {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
-                          </select>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">
+                              {pickerPhotos.length} item{pickerPhotos.length !== 1 ? "s" : ""} selected
+                            </p>
+                            <button
+                              type="button"
+                              onClick={openGooglePhotosPicker}
+                              disabled={pickerLoading}
+                              className="text-xs text-voce-indigo hover:underline disabled:opacity-60"
+                            >
+                              {pickerLoading ? "Opening…" : "Change selection"}
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-4 gap-1.5">
+                            {pickerPhotos.slice(0, 8).map(photo => (
+                              <div key={photo.id} className="aspect-square overflow-hidden rounded-lg bg-[#E2E2E0]">
+                                {photo.type === "video"
+                                  ? <div className="flex h-full w-full items-center justify-center text-lg">🎥</div>
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  : <img src={`${photo.baseUrl}=w150-h150-c`} alt="" className="h-full w-full object-cover" />}
+                              </div>
+                            ))}
+                            {pickerPhotos.length > 8 && (
+                              <div className="flex aspect-square items-center justify-center rounded-lg bg-[#E2E2E0] text-xs font-medium text-[#64748B]">
+                                +{pickerPhotos.length - 8}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <label className="mb-1.5 block text-xs font-medium text-[#64748B]">To year</label>
-                          <select value={mediaYearTo} onChange={e => setMediaYearTo(e.target.value)} className={inputCls}>
-                            <option value="present">Present</option>
-                            {[...YEAR_OPTIONS].reverse().map(y => <option key={y} value={y}>{y}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-2 rounded-lg bg-voce-indigo/5 px-3 py-2.5">
-                        <Camera className="mt-0.5 h-4 w-4 shrink-0 text-voce-indigo" />
-                        <p className="text-xs text-[#64748B]">
-                          We&apos;ll suggest matching photos and videos from your Google Photos library
-                          for each piece of content generated.
-                        </p>
-                      </div>
+                      )}
                     </div>
                   )}
                 </div>

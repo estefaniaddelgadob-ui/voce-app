@@ -1,0 +1,85 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
+
+export async function GET(request: NextRequest) {
+  try {
+    const sessionId = new URL(request.url).searchParams.get("sessionId");
+    if (!sessionId) return NextResponse.json({ error: "sessionId required" }, { status: 400 });
+
+    const cookieStore = cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { get: (name) => cookieStore.get(name)?.value } }
+    );
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+    const admin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    const { data: profile } = await admin
+      .from("persona_profile")
+      .select("google_access_token")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!profile?.google_access_token) {
+      return NextResponse.json({ error: "Google Photos not connected" }, { status: 400 });
+    }
+
+    const token = profile.google_access_token;
+
+    // Check if the user has finished selecting
+    const sessionRes = await fetch(
+      `https://photospicker.googleapis.com/v1/sessions/${sessionId}`,
+      { headers: { "Authorization": `Bearer ${token}` } }
+    );
+    const sessionData = await sessionRes.json();
+
+    if (!sessionRes.ok) {
+      const msg = sessionData.error?.message ?? "Session check failed";
+      return NextResponse.json({ error: msg }, { status: sessionRes.status });
+    }
+
+    // mediaItemsSet is the boolean that indicates the user finished selecting
+    if (!sessionData.mediaItemsSet) {
+      return NextResponse.json({ ready: false, items: [] });
+    }
+
+    // User finished — fetch selected items
+    const itemsRes = await fetch(
+      `https://photospicker.googleapis.com/v1/mediaItems?sessionId=${sessionId}`,
+      { headers: { "Authorization": `Bearer ${token}` } }
+    );
+    const itemsData = await itemsRes.json();
+    console.log("[picker/get-selected] items:", itemsData.mediaItems?.length ?? 0);
+
+    // Clean up session
+    await fetch(`https://photospicker.googleapis.com/v1/sessions/${sessionId}`, {
+      method:  "DELETE",
+      headers: { "Authorization": `Bearer ${token}` },
+    }).catch(() => {}); // silent — session may already be expired
+
+    const items = (itemsData.mediaItems ?? []).map((item: {
+      id: string;
+      baseUrl?: string;
+      mimeType?: string;
+      type?: string;
+    }) => ({
+      id:       item.id,
+      baseUrl:  item.baseUrl  ?? "",
+      mimeType: item.mimeType ?? "image/jpeg",
+      type:     item.type     ?? "photo",
+    }));
+
+    return NextResponse.json({ ready: true, items });
+  } catch (err) {
+    console.error("[picker/get-selected] error:", err);
+    return NextResponse.json({ error: "Failed to get selected items" }, { status: 500 });
+  }
+}

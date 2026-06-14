@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LogOut, Loader2, CheckCircle2, RefreshCw, Unlink } from "lucide-react";
+import { LogOut, Loader2, CheckCircle2, Unlink } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
 function SignOutButton() {
@@ -41,9 +41,7 @@ function GooglePhotosSection() {
   const searchParams = useSearchParams();
   const [profile,  setProfile]  = useState<PhotosProfile | null>(null);
   const [loading,  setLoading]  = useState(true);
-  const [syncing,       setSyncing]       = useState(false);
-  const [syncMsg,       setSyncMsg]       = useState<string | null>(null);
-  const [syncErr,       setSyncErr]       = useState<string | null>(null);
+  const [actionErr,     setActionErr]     = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnected,  setDisconnected]  = useState(false);
 
@@ -67,31 +65,8 @@ function GooglePhotosSection() {
     fetchProfile();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function handleSync() {
-    setSyncing(true); setSyncMsg(null); setSyncErr(null);
-    try {
-      const res  = await fetch("/api/sync-photos", { method: "POST" });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setSyncMsg(`${data.synced} photo${data.synced !== 1 ? "s" : ""} synced ✓`);
-      // refresh profile to get new last_synced timestamp
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: p } = await supabase.from("persona_profile")
-          .select("google_photos_connected, google_photos_last_synced")
-          .eq("user_id", user.id).single();
-        setProfile(p as PhotosProfile ?? null);
-      }
-    } catch (err) {
-      setSyncErr(err instanceof Error ? err.message : "Sync failed");
-    } finally {
-      setSyncing(false);
-    }
-  }
-
   async function handleDisconnect() {
-    setDisconnecting(true); setSyncMsg(null); setSyncErr(null);
+    setDisconnecting(true); setActionErr(null);
     try {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
@@ -105,7 +80,7 @@ function GooglePhotosSection() {
       setProfile(null);
       setDisconnected(true);
     } catch (err) {
-      setSyncErr(err instanceof Error ? err.message : "Disconnect failed");
+      setActionErr(err instanceof Error ? err.message : "Disconnect failed");
     } finally {
       setDisconnecting(false);
     }
@@ -130,17 +105,15 @@ function GooglePhotosSection() {
               <p className="text-sm font-medium text-[#0F172A]">Google Photos</p>
               {isConnected ? (
                 <p className="mt-0.5 text-xs text-voce-teal">
-                  Connected{profile?.google_photos_last_synced
-                    ? ` · Last synced ${new Date(profile.google_photos_last_synced).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
-                    : " · Not yet synced"}
+                  Connected — pick photos directly when generating content
                 </p>
               ) : disconnected ? (
                 <p className="mt-0.5 text-xs text-amber-600">
-                  Disconnected — reconnect to sync photos
+                  Disconnected — reconnect to enable photo picking
                 </p>
               ) : (
                 <p className="mt-0.5 text-xs text-[#94A3B8]">
-                  Connect to auto-match your media with content
+                  Connect to pick photos directly when creating content
                 </p>
               )}
               {connectError && (
@@ -148,14 +121,6 @@ function GooglePhotosSection() {
               )}
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {isConnected && (
-                <button onClick={handleSync} disabled={syncing || disconnecting}
-                  className="flex items-center gap-1.5 rounded-lg border border-[#E2E2E0] px-3 py-1.5 text-xs font-medium text-[#64748B] transition hover:bg-[#F4F4F2] disabled:opacity-60">
-                  {syncing
-                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Syncing…</>
-                    : <><RefreshCw className="h-3.5 w-3.5" /> Sync now</>}
-                </button>
-              )}
               {isConnected ? (
                 <span className="flex items-center gap-1.5 rounded-lg bg-voce-teal/10 px-3 py-1.5 text-xs font-medium text-voce-teal">
                   <CheckCircle2 className="h-3.5 w-3.5" /> Connected
@@ -172,7 +137,7 @@ function GooglePhotosSection() {
           {/* Disconnect — small, below status row, only when connected */}
           {isConnected && (
             <div className="mt-3 flex justify-end">
-              <button onClick={handleDisconnect} disabled={disconnecting || syncing}
+              <button onClick={handleDisconnect} disabled={disconnecting}
                 className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-60">
                 {disconnecting
                   ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Disconnecting…</>
@@ -182,8 +147,7 @@ function GooglePhotosSection() {
           )}
           </>
         )}
-        {syncMsg && <p className="mt-3 text-xs text-voce-teal">{syncMsg}</p>}
-        {syncErr && <p className="mt-3 text-xs text-red-500">{syncErr}</p>}
+        {actionErr && <p className="mt-3 text-xs text-red-500">{actionErr}</p>}
       </div>
     </div>
   );
