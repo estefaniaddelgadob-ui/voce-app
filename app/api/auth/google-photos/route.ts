@@ -5,7 +5,9 @@ import { cookies } from "next/headers";
 export async function GET(request: Request) {
   const requestUrl  = new URL(request.url);
   const baseUrl     = `${requestUrl.protocol}//${requestUrl.host}`;
-  const redirectUri = `${baseUrl}/api/auth/google-photos/callback`;
+  const redirectUri = process.env.NEXT_PUBLIC_APP_URL
+    ? `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/google-photos/callback`
+    : `https://echoooo.app/api/auth/google-photos/callback`;
 
   console.log("[oauth] baseUrl:", baseUrl);
   console.log("[oauth] redirectUri:", redirectUri);
