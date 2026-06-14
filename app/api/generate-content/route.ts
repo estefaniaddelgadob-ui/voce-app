@@ -6,6 +6,28 @@ function extractJSON(text: string) {
   return match ? match[1] : text.trim();
 }
 
+const safeParseJSON = (text: string) => {
+  try {
+    return JSON.parse(text)
+  } catch {
+    // Find last complete variation
+    const match = text.match(
+      /(\{"id":\d+.*?\})\s*[,\]]/gs
+    )
+    if (match && match.length > 0) {
+      try {
+        return { variations: match.map(m =>
+          JSON.parse(m.replace(/,$/, ''))
+        )}
+      } catch { /* fall through */ }
+    }
+    throw new Error(
+      'Could not parse response: ' +
+      text.slice(-100)
+    )
+  }
+}
+
 const SYSTEM_PROMPT = `You are a ghostwriter who has studied this creator deeply. Your job is to write content that sounds exactly like them AND performs well on Instagram.
 
 BALANCE:
@@ -68,7 +90,7 @@ export async function POST(request: NextRequest) {
         : `\nTONE: ${persona.tone || "authentic"}\nSTYLE: ${persona.communication_style || "direct and clear"}`;
 
       const message = await anthropic.messages.create({
-        model: "claude-sonnet-4-6", max_tokens: 1500,
+        model: "claude-sonnet-4-6", max_tokens: 4000,
         messages: [{
           role: "user",
           content: `You are ghostwriting for ${persona.display_name || "a content creator"}.
@@ -123,8 +145,10 @@ Write a ${(audience.primary_platform || "social media")} post. Return ONLY valid
 
     type ThoughtNote = { title?: string; transcript?: string; ideas?: string; standout_phrases?: string; themes?: string; created_at?: string; };
     const notes = thoughtNotes as ThoughtNote[];
-    const notesBlock = notes.length > 0
-      ? notes.map((n, i) => {
+    // Shorten notes when media context is included to keep prompt within token budget
+    const maxNotes   = selectedMediaContext?.count ? 5 : 10;
+    const notesBlock = notes.slice(0, maxNotes).length > 0
+      ? notes.slice(0, maxNotes).map((n, i) => {
           const dateStr = n.created_at ? ` [${new Date(n.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}]` : "";
           const parts: string[] = [`Note ${i + 1}${dateStr}:`];
           if (n.transcript) parts.push(`Transcript: ${n.transcript}`);
@@ -238,8 +262,10 @@ Generate ${variations} variation(s). Each must be distinctly different (differen
       messages:   [{ role: "user", content: userMessage }],
     });
 
-    const raw  = message.content[0].type === "text" ? message.content[0].text : "{}";
-    const data = JSON.parse(extractJSON(raw));
+    const rawText = message.content[0].type === "text" ? message.content[0].text : "{}";
+    console.log('[generate] response length:', rawText.length)
+    console.log('[generate] response tail:', rawText.slice(-300))
+    const data = safeParseJSON(extractJSON(rawText));
     return NextResponse.json(data);
   } catch (err) {
     console.error("Content generation error:", err);
