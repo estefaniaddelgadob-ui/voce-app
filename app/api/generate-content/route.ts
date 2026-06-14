@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
     const {
       topic, persona, audience, thoughtNotes,
       contentType, length, variations, toneOverride, feedbackContext, dateContext, mediaType,
+      selectedMediaContext,
     } = await request.json();
 
     // ── Legacy single-generation path (no variations param) ──────────────────
@@ -195,6 +196,10 @@ Write a ${(audience.primary_platform || "social media")} post. Return ONLY valid
       ? `\nMedia preference: ${mediaType === "photos" ? "suggest image descriptions only — no video clips" : "suggest video clip descriptions only — no static images"}`
       : "";
 
+    const selectedMediaNote = selectedMediaContext?.count
+      ? `\nSelected media: the creator has already chosen ${selectedMediaContext.count} ${selectedMediaContext.hasVideos ? "photos/videos" : "photos"} to pair with this content. Write content that works WITH these visuals — structure the narrative so each visual has a clear moment it belongs to.`
+      : "";
+
     if (contentType === "carousel_script") {
       console.log("[carousel] slideCount:", length, "instruction:", lengthInstruction.trim().slice(0, 80));
     }
@@ -222,7 +227,7 @@ ${audienceBlock}
 
 Content type: ${lengthNote}
 Topic: ${topic}
-Output language: ${persona.output_language || "English"}${toneNote}${feedbackNote}${dateNote}${mediaTypeNote}${lengthInstruction}
+Output language: ${persona.output_language || "English"}${toneNote}${feedbackNote}${dateNote}${mediaTypeNote}${selectedMediaNote}${lengthInstruction}
 
 Generate ${variations} variation(s). Each must be distinctly different (different angle, hook, or opening). Mirror the creator's exact voice — their rhythm, vocabulary, punctuation. Speak directly to this audience's pain points and dreams.`;
 

@@ -304,6 +304,115 @@ function PhotoGrid({ mediaType, yearFrom, yearTo }: {
   );
 }
 
+// ── Picker photo type (shared) ────────────────────────────────────────────────
+
+interface PickerPhoto { id: string; baseUrl: string; mimeType: string; type: string; }
+
+interface MediaPlanItem {
+  mediaIndex:        number;
+  role:              string;
+  matchesMoment:     string;
+  whyItWorks:        string;
+  howToUse:          string;
+  editingSuggestion: string;
+}
+
+// ── Picker media plan ──────────────────────────────────────────────────────────
+
+function PickerMediaPlan({ body, contentType, photos }: {
+  body:        string;
+  contentType: string;
+  photos:      PickerPhoto[];
+}) {
+  const [plan,    setPlan]    = useState<MediaPlanItem[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
+
+  async function generatePlan() {
+    setLoading(true); setError(null);
+    try {
+      const res  = await fetch("/api/match-media", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ caption: body, contentType, photos }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setPlan(data.mediaplan ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate media plan");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-xl bg-[#F8F8FF] p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">📽️ Media Plan</p>
+        {plan ? (
+          <button onClick={generatePlan} disabled={loading}
+            className="text-xs text-voce-indigo hover:underline disabled:opacity-60">
+            {loading ? "Regenerating…" : "Regenerate"}
+          </button>
+        ) : (
+          <button onClick={generatePlan} disabled={loading}
+            className="flex items-center gap-1.5 rounded-lg bg-voce-indigo px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-60">
+            {loading
+              ? <><Loader2 className="h-3 w-3 animate-spin" /> Matching…</>
+              : "Match media →"}
+          </button>
+        )}
+      </div>
+
+      {/* Thumbnail strip before plan loads */}
+      {!plan && !loading && (
+        <div className="grid grid-cols-4 gap-1.5">
+          {photos.slice(0, 8).map(photo => (
+            <div key={photo.id} className="aspect-square overflow-hidden rounded-lg bg-[#E2E2E0]">
+              {photo.type === "video"
+                ? <div className="flex h-full w-full items-center justify-center text-lg">🎥</div>
+                // eslint-disable-next-line @next/next/no-img-element
+                : <img src={`${photo.baseUrl}=w150-h150-c`} alt="" className="h-full w-full object-cover" />}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && <p className="text-xs text-red-500">{error}</p>}
+
+      {/* Plan results */}
+      {plan && plan.map((item, i) => {
+        const photo = photos[item.mediaIndex];
+        if (!photo) return null;
+        return (
+          <div key={i} className="flex gap-3 rounded-xl bg-white p-3">
+            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-[#E2E2E0]">
+              {photo.type === "video"
+                ? <div className="flex h-full w-full items-center justify-center text-xl">🎥</div>
+                // eslint-disable-next-line @next/next/no-img-element
+                : <img src={`${photo.baseUrl}=w128-h128-c`} alt="" className="h-full w-full object-cover" />}
+            </div>
+            <div className="min-w-0 flex-1 space-y-1">
+              <span className="inline-block rounded-full bg-voce-indigo/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-voce-indigo">
+                {item.role}
+              </span>
+              <p className="text-xs font-medium text-[#0F172A]">{item.matchesMoment}</p>
+              <p className="text-[11px] text-[#64748B]">{item.whyItWorks}</p>
+              {item.howToUse && (
+                <p className="text-[11px] text-voce-indigo">→ {item.howToUse}</p>
+              )}
+              {item.editingSuggestion && (
+                <p className="text-[10px] italic text-[#94A3B8]">{item.editingSuggestion}</p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Slide helpers ──────────────────────────────────────────────────────────────
 
 const SLIDE_PATTERN = /(?:Slide|Frame|Story|Card)\s*\d+[:\s]*/gi;
@@ -444,13 +553,14 @@ function MediaSuggestions({ body, mediaType = "both", photosConnected = false, y
 
 // ── Content draft card ─────────────────────────────────────────────────────────
 
-function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, isNew = false, onRead }: {
+function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, isNew = false, onRead, pickerPhotos = [] }: {
   draft: ContentDraft;
   onStatusChange: (id: string, status: string) => void;
   onDelete: (id: string) => void;
   photosConnected: boolean;
   isNew?: boolean;
   onRead?: (id: string) => void;
+  pickerPhotos?: PickerPhoto[];
 }) {
   const [expanded,      setExpanded]     = useState(false);
   const [body,          setBody]         = useState(draft.body);
@@ -856,9 +966,17 @@ Write a completely different version that addresses these specific issues. ` +
             Delete
           </button>
 
-          {/* Media suggestions */}
-          <MediaSuggestions body={body} mediaType={draft.media_type} photosConnected={photosConnected}
-            yearFrom={draft.media_year_from} yearTo={draft.media_year_to} />
+          {/* Media suggestions — picker-aware */}
+          {pickerPhotos.length > 0 ? (
+            <PickerMediaPlan
+              body={body}
+              contentType={draft.content_type ?? "instagram_caption"}
+              photos={pickerPhotos}
+            />
+          ) : (
+            <MediaSuggestions body={body} mediaType={draft.media_type} photosConnected={photosConnected}
+              yearFrom={draft.media_year_from} yearTo={draft.media_year_to} />
+          )}
 
         </div>
       )}
@@ -1046,6 +1164,11 @@ export default function ContentPage() {
           length:       contentLength,
           variations,
           toneOverride,
+          selectedMediaContext: pickerPhotos.length > 0 ? {
+            count:     pickerPhotos.length,
+            types:     pickerPhotos.map(p => p.type),
+            hasVideos: pickerPhotos.some(p => p.type === "video"),
+          } : null,
         }),
       });
       const data = await res.json();
@@ -1507,6 +1630,7 @@ export default function ContentPage() {
                 photosConnected={photosConnected}
                 isNew={newDraftIds.has(d.id)}
                 onRead={(id) => setNewDraftIds(prev => { const next = new Set(Array.from(prev)); next.delete(id); return next; })}
+                pickerPhotos={pickerPhotos}
               />
             ))}
           </div>
