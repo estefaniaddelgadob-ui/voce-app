@@ -308,46 +308,46 @@ async function saveNote(
   const finalIdeas       = (edits?.ideas ?? result.analysis.ideas ?? []).join("\n");
   const finalPhrases     = (result.analysis.phrases ?? []).join("\n");
 
-  // Only include columns confirmed to exist in thought_notes
+  // note_type matches migration 002 column name; raw_ideas is jsonb — pass object not string
   const payload = {
     user_id:          user.id,
-    type:             noteType,
+    note_type:        noteType,
     title:            result.analysis.title,
     transcript:       finalTranscript,
     themes:           finalThemes,
-    raw_ideas:        JSON.stringify(finalAnalysis),  // TEXT column — must be string
+    raw_ideas:        finalAnalysis,
     duration_seconds: result.durationSec ?? null,
     ideas:            finalIdeas,
     standout_phrases: finalPhrases,
   };
 
-  console.log("[saveNote] payload diagnostics:", {
-    type:              payload.type,
-    title_len:         payload.title?.length,
-    transcript_len:    finalTranscript.length,
-    transcript_words:  finalTranscript.split(/\s+/).filter(Boolean).length,
-    themes_count:      finalThemes.length,
-    ideas_len:         finalIdeas.length,
-    phrases_len:       finalPhrases.length,
-    raw_ideas_len:     payload.raw_ideas.length,
-    duration_seconds:  payload.duration_seconds,
-  });
-  console.log("[saveNote] ideas:", payload.ideas?.slice(0, 100));
-  console.log("[saveNote] phrases:", payload.standout_phrases?.slice(0, 100));
-  console.log("[saveNote] themes:", payload.themes);
+  console.log('[saveNote] FULL PAYLOAD:', JSON.stringify({
+    type:             payload.note_type,
+    title_len:        payload.title?.length,
+    transcript_len:   payload.transcript?.length,
+    raw_ideas_type:   typeof payload.raw_ideas,
+    raw_ideas_len:    JSON.stringify(payload.raw_ideas)?.length,
+    themes_type:      typeof payload.themes,
+    themes_is_array:  Array.isArray(payload.themes),
+    themes_value:     payload.themes,
+    ideas_len:        payload.ideas?.length,
+    phrases_len:      payload.standout_phrases?.length,
+    duration:         payload.duration_seconds,
+  }))
 
   const response = await supabase.from("thought_notes").insert(payload).select();
 
   if (response.error) {
     const e = response.error;
-    console.error("[saveNote] FULL DB error:", JSON.stringify(e, null, 2));
-    const parts = [
-      e.message,
-      e.code    ? `code: ${e.code}`       : "",
-      e.details ? `details: ${e.details}` : "",
-      e.hint    ? `hint: ${e.hint}`       : "",
-    ].filter(Boolean);
-    throw new Error(parts.join(" | "));
+    console.log('[saveNote] ERROR FULL:', JSON.stringify({
+      message: e.message,
+      code:    e.code,
+      details: e.details,
+      hint:    e.hint,
+    }))
+    throw new Error(
+      `[${e.code}] ${e.message}${e.details ? ` | details: ${e.details}` : ""}${e.hint ? ` | hint: ${e.hint}` : ""}`
+    );
   }
 
   console.log("[saveNote] saved successfully, id:", response.data?.[0]?.id);
