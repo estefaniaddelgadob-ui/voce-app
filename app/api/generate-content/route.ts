@@ -130,6 +130,8 @@ Write a ${(audience.primary_platform || "social media")} post. Return ONLY valid
       persona.pushback                ? `PUSHBACK (what they stand against): ${persona.pushback}` : "",
       persona.never_say               ? `NEVER USE THESE WORDS: ${persona.never_say}` : "",
       persona.style_fingerprint       ? `AI STYLE FINGERPRINT:\n${persona.style_fingerprint}` : "",
+      (persona.voice_learnings as string[] | undefined)?.length
+        ? `LEARNED FROM PAST FEEDBACK (apply these strictly):\n- ${(persona.voice_learnings as string[]).join("\n- ")}` : "",
     ].filter(Boolean).join("\n");
 
     const samplesBlock = (persona.sample_captions as string[])?.filter(Boolean).length > 0

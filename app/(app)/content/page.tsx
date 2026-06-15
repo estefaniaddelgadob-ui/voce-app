@@ -72,6 +72,16 @@ const FEEDBACK_REASONS = [
   "Not specific enough",
 ] as const;
 
+const DELETE_QUALITY_CHIPS = [
+  "Not my voice", "Too formal", "Too generic", "Wrong energy",
+  "Too long", "Too short", "Good ideas, wrong words", "Not specific enough",
+] as const;
+
+const DELETE_IMPROVE_CHIPS = [
+  "More personal stories", "More vulnerable", "More direct", "More poetic",
+  "More conversational", "Stronger hook", "Better CTA", "Different topic angle",
+] as const;
+
 const LIBRARY_TABS: { id: LibraryFilter; label: string }[] = [
   { id: "generated", label: "Generated" },
   { id: "approved",  label: "Approved"  },
@@ -578,7 +588,10 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, is
   const [saveState,    setSaveState]    = useState<"idle" | "saving" | "saved">("idle");
   const [copyState,    setCopyState]    = useState<"idle" | "copied">("idle");
   const [cardError,    setCardError]    = useState<string | null>(null);
-  const [deleting,     setDeleting]     = useState(false);
+  const [deleting,         setDeleting]         = useState(false);
+  const [showDeleteSheet,  setShowDeleteSheet]  = useState(false);
+  const [deleteQuality,    setDeleteQuality]    = useState<string[]>([]);
+  const [deleteImprovs,    setDeleteImprovs]    = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isApproved  = status === "approved";
@@ -631,19 +644,59 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, is
     }
   }
 
-  async function handleDelete() {
-    if (!confirm("Delete this post? This can't be undone.")) return;
+  async function handleDeleteWithFeedback() {
     setDeleting(true); setCardError(null);
-    console.log("[delete] attempting:", draft.id);
     try {
       const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      // Save feedback row (best-effort — don't fail delete if table missing)
+      supabase.from("content_feedback").insert({
+        user_id:              user.id,
+        content_draft_id:     draft.id,
+        feedback_type:        "delete",
+        quality_reasons:      deleteQuality,
+        improvement_reasons:  deleteImprovs,
+        original_content:     body,
+      }).then(({ error: fbErr }) => {
+        if (fbErr) console.warn("[feedback] content_feedback insert:", fbErr.message);
+      });
+
+      // Fire-and-forget: extract learnings and save to persona
+      const { data: persona } = await supabase.from("persona_profile").select("*").eq("user_id", user.id).single();
+      fetch("/api/update-persona-from-feedback", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ qualityIssues: deleteQuality, improvements: deleteImprovs, originalContent: body, persona }),
+      }).then(async res => {
+        const { learnings } = await res.json();
+        if (learnings?.length > 0) {
+          const existing = (persona?.voice_learnings as string[] | undefined) ?? [];
+          const merged   = [...new Set([...existing, ...learnings])].slice(-20);
+          await supabase.from("persona_profile").update({ voice_learnings: merged }).eq("user_id", user.id);
+          console.log("[feedback] persona learnings saved:", learnings);
+        }
+      }).catch(err => console.error("[feedback] update-persona error:", err));
+
       const { error } = await supabase.from("content_drafts").delete().eq("id", draft.id);
-      console.log("[delete] result:", error);
       if (error) throw error;
       onDelete(draft.id);
     } catch (err) {
       setCardError(err instanceof Error ? err.message : "Delete failed");
-    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handleJustDelete() {
+    setDeleting(true); setCardError(null);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("content_drafts").delete().eq("id", draft.id);
+      if (error) throw error;
+      onDelete(draft.id);
+    } catch (err) {
+      setCardError(err instanceof Error ? err.message : "Delete failed");
       setDeleting(false);
     }
   }
@@ -869,113 +922,178 @@ Write a completely different version that addresses these specific issues. ` +
       {expanded && (
         <div className="border-t border-[#E2E2E0] px-4 pb-5 pt-4 space-y-4">
 
-          {/* Content display — structured when hook/body/cta available, textarea when editing */}
-          {editing ? (
-            <div>
-              <textarea
-                ref={textareaRef}
-                value={body}
-                onChange={e => setBody(e.target.value)}
-                rows={Math.max(4, body.split("\n").length + 2)}
-                className="w-full resize-none rounded-xl bg-white px-4 py-3 text-sm leading-relaxed text-[#0F172A] outline-none ring-2 ring-voce-indigo/20 transition"
-              />
-              <p className="mt-1 text-right text-xs text-[#94A3B8]">{wordCount} words</p>
-            </div>
-          ) : draftHook ? (
-            <div className="space-y-4 rounded-xl bg-[#F8F8FF] p-4">
+          {/* Delete feedback sheet */}
+          {showDeleteSheet && (
+            <div className="space-y-4">
+              <p className="text-sm font-semibold text-[#0F172A]">Before we delete this — what was off?</p>
+
               <div>
-                <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">Hook</p>
-                <p className="text-base font-semibold leading-snug text-[#0F172A]">{draftHook}</p>
-              </div>
-              {draftBody && (
-                <div>
-                  <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">Body</p>
-                  <p className="whitespace-pre-line text-sm leading-relaxed text-[#0F172A]">{draftBody}</p>
-                </div>
-              )}
-              {draftCta && (
-                <div>
-                  <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">CTA</p>
-                  <p className="text-sm font-medium text-voce-indigo">{draftCta}</p>
-                </div>
-              )}
-              {hashtags.length > 0 && (
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">Content quality</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {hashtags.map(h => (
-                    <span key={h} className="rounded-full bg-[#E8E8FF] px-2.5 py-0.5 text-[11px] font-medium text-voce-indigo">{h}</span>
+                  {DELETE_QUALITY_CHIPS.map(chip => (
+                    <button key={chip} type="button"
+                      onClick={() => setDeleteQuality(prev => prev.includes(chip) ? prev.filter(x => x !== chip) : [...prev, chip])}
+                      className={[
+                        "rounded-full px-2.5 py-1 text-xs font-medium transition",
+                        deleteQuality.includes(chip)
+                          ? "border border-red-200 bg-red-100 text-red-700"
+                          : "border border-[#E2E2E0] text-[#64748B] hover:border-red-300 hover:text-red-600",
+                      ].join(" ")}>
+                      {chip}
+                    </button>
                   ))}
                 </div>
-              )}
-            </div>
-          ) : (
-            <div>
-              {hasSlides(body) ? (
-                <div className="space-y-2">
-                  {parseSlides(body).map((slide, i) => (
-                    <div key={i} className="rounded-xl bg-[#F8F8FF] px-4 py-3">
-                      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">Slide {i + 1}</p>
-                      <p className="whitespace-pre-line text-sm leading-relaxed text-[#0F172A]">{slide}</p>
-                    </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">What would make it better?</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {DELETE_IMPROVE_CHIPS.map(chip => (
+                    <button key={chip} type="button"
+                      onClick={() => setDeleteImprovs(prev => prev.includes(chip) ? prev.filter(x => x !== chip) : [...prev, chip])}
+                      className={[
+                        "rounded-full px-2.5 py-1 text-xs font-medium transition",
+                        deleteImprovs.includes(chip)
+                          ? "border border-voce-indigo/30 bg-voce-indigo/10 text-voce-indigo"
+                          : "border border-[#E2E2E0] text-[#64748B] hover:border-voce-indigo/30 hover:text-voce-indigo",
+                      ].join(" ")}>
+                      {chip}
+                    </button>
                   ))}
                 </div>
-              ) : (
-                <textarea
-                  ref={textareaRef}
-                  value={body}
-                  readOnly
-                  rows={Math.max(4, body.split("\n").length + 2)}
-                  className="w-full cursor-default resize-none rounded-xl bg-[#F8F8FF] px-4 py-3 text-sm leading-relaxed text-[#0F172A] outline-none"
-                />
-              )}
-              <p className="mt-1 text-right text-xs text-[#94A3B8]">{wordCount} words</p>
-            </div>
-          )}
+              </div>
 
-          {/* ── Approve (only when not approved/published) ── */}
-          {!isApproved && !isPublished && (
-            <button onClick={handleApprove} disabled={approving || deleting}
-              className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-voce-indigo text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60">
-              {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              ✓ Approve
-            </button>
-          )}
+              <div className="flex gap-3">
+                <button onClick={handleDeleteWithFeedback} disabled={deleting}
+                  className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-red-500 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60">
+                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Delete with feedback
+                </button>
+                <button onClick={handleJustDelete} disabled={deleting}
+                  className="flex min-h-[44px] items-center justify-center rounded-xl border border-red-200 px-4 text-sm font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-60">
+                  Just delete
+                </button>
+              </div>
 
-          {/* Approved / Published status */}
-          {isApproved && !isPublished && (
-            <div className="space-y-2">
-              <p className="flex items-center gap-2 text-sm font-semibold text-voce-indigo">
-                <CheckCircle2 className="h-4 w-4" /> Approved ✓
-              </p>
-              <button onClick={handlePublish} disabled={publishing}
-                className="flex min-h-[40px] items-center gap-2 rounded-xl bg-voce-teal px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60">
-                {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                Mark as published
+              <button
+                onClick={() => { setShowDeleteSheet(false); setDeleteQuality([]); setDeleteImprovs([]); }}
+                className="text-xs text-[#94A3B8] transition hover:text-[#64748B]">
+                Cancel
               </button>
             </div>
           )}
-          {isPublished && (
-            <p className="flex items-center gap-2 text-sm font-medium text-voce-teal">
-              <CheckCircle2 className="h-4 w-4" /> Published
-            </p>
-          )}
 
-          {/* Delete */}
-          <button onClick={handleDelete} disabled={deleting || approving}
-            className="flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl border border-red-200 text-sm font-medium text-red-400 transition hover:bg-red-50 disabled:opacity-60">
-            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-            Delete
-          </button>
+          {/* Content display, approve, delete, media — hidden when delete sheet is open */}
+          {!showDeleteSheet && (
+            <>
+              {/* Content display — structured when hook/body/cta available, textarea when editing */}
+              {editing ? (
+                <div>
+                  <textarea
+                    ref={textareaRef}
+                    value={body}
+                    onChange={e => setBody(e.target.value)}
+                    rows={Math.max(4, body.split("\n").length + 2)}
+                    className="w-full resize-none rounded-xl bg-white px-4 py-3 text-sm leading-relaxed text-[#0F172A] outline-none ring-2 ring-voce-indigo/20 transition"
+                  />
+                  <p className="mt-1 text-right text-xs text-[#94A3B8]">{wordCount} words</p>
+                </div>
+              ) : draftHook ? (
+                <div className="space-y-4 rounded-xl bg-[#F8F8FF] p-4">
+                  <div>
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">Hook</p>
+                    <p className="text-base font-semibold leading-snug text-[#0F172A]">{draftHook}</p>
+                  </div>
+                  {draftBody && (
+                    <div>
+                      <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">Body</p>
+                      <p className="whitespace-pre-line text-sm leading-relaxed text-[#0F172A]">{draftBody}</p>
+                    </div>
+                  )}
+                  {draftCta && (
+                    <div>
+                      <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">CTA</p>
+                      <p className="text-sm font-medium text-voce-indigo">{draftCta}</p>
+                    </div>
+                  )}
+                  {hashtags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {hashtags.map(h => (
+                        <span key={h} className="rounded-full bg-[#E8E8FF] px-2.5 py-0.5 text-[11px] font-medium text-voce-indigo">{h}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  {hasSlides(body) ? (
+                    <div className="space-y-2">
+                      {parseSlides(body).map((slide, i) => (
+                        <div key={i} className="rounded-xl bg-[#F8F8FF] px-4 py-3">
+                          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">Slide {i + 1}</p>
+                          <p className="whitespace-pre-line text-sm leading-relaxed text-[#0F172A]">{slide}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <textarea
+                      ref={textareaRef}
+                      value={body}
+                      readOnly
+                      rows={Math.max(4, body.split("\n").length + 2)}
+                      className="w-full cursor-default resize-none rounded-xl bg-[#F8F8FF] px-4 py-3 text-sm leading-relaxed text-[#0F172A] outline-none"
+                    />
+                  )}
+                  <p className="mt-1 text-right text-xs text-[#94A3B8]">{wordCount} words</p>
+                </div>
+              )}
 
-          {/* Media suggestions — picker-aware */}
-          {pickerPhotos.length > 0 ? (
-            <PickerMediaPlan
-              body={body}
-              contentType={draft.content_type ?? "instagram_caption"}
-              photos={pickerPhotos}
-            />
-          ) : (
-            <MediaSuggestions body={body} mediaType={draft.media_type} photosConnected={photosConnected}
-              yearFrom={draft.media_year_from} yearTo={draft.media_year_to} />
+              {/* ── Approve (only when not approved/published) ── */}
+              {!isApproved && !isPublished && (
+                <button onClick={handleApprove} disabled={approving || deleting}
+                  className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-voce-indigo text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60">
+                  {approving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  ✓ Approve
+                </button>
+              )}
+
+              {/* Approved / Published status */}
+              {isApproved && !isPublished && (
+                <div className="space-y-2">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-voce-indigo">
+                    <CheckCircle2 className="h-4 w-4" /> Approved ✓
+                  </p>
+                  <button onClick={handlePublish} disabled={publishing}
+                    className="flex min-h-[40px] items-center gap-2 rounded-xl bg-voce-teal px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60">
+                    {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                    Mark as published
+                  </button>
+                </div>
+              )}
+              {isPublished && (
+                <p className="flex items-center gap-2 text-sm font-medium text-voce-teal">
+                  <CheckCircle2 className="h-4 w-4" /> Published
+                </p>
+              )}
+
+              {/* Delete — triggers feedback sheet */}
+              <button onClick={() => { setShowDeleteSheet(true); setDeleteQuality([]); setDeleteImprovs([]); }} disabled={deleting || approving}
+                className="flex min-h-[40px] w-full items-center justify-center gap-2 rounded-xl border border-red-200 text-sm font-medium text-red-400 transition hover:bg-red-50 disabled:opacity-60">
+                <Trash2 className="h-4 w-4" /> Delete
+              </button>
+
+              {/* Media suggestions — picker-aware */}
+              {pickerPhotos.length > 0 ? (
+                <PickerMediaPlan
+                  body={body}
+                  contentType={draft.content_type ?? "instagram_caption"}
+                  photos={pickerPhotos}
+                />
+              ) : (
+                <MediaSuggestions body={body} mediaType={draft.media_type} photosConnected={photosConnected}
+                  yearFrom={draft.media_year_from} yearTo={draft.media_year_to} />
+              )}
+            </>
           )}
 
         </div>
