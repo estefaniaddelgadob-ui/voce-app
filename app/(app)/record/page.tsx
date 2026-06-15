@@ -7,7 +7,7 @@ import Link from "next/link";
 import {
   Mic, Square, Play, Pause, Loader2, Save,
   Trash2, ImagePlus, X, CheckCircle2,
-  Upload, FileAudio, AlignLeft,
+  Upload, FileAudio, AlignLeft, Copy,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
@@ -159,6 +159,47 @@ function SavedScreen({ onRecordAnother }: { onRecordAnother: () => void }) {
   );
 }
 
+// ── Save failed banner ────────────────────────────────────────────────────────
+
+function SaveFailedBanner({
+  error, transcript, onDismiss, onReset,
+}: {
+  error: string; transcript: string; onDismiss: () => void; onReset: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  async function copyTranscript() {
+    try {
+      await navigator.clipboard.writeText(transcript);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard not available */ }
+  }
+  return (
+    <div className="mt-4 w-full rounded-xl border border-red-200 bg-red-50 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-red-700">Save failed</p>
+          <p className="mt-1 break-all font-mono text-xs text-red-600">{error}</p>
+          <p className="mt-2 text-sm text-red-700">Your recording is still here.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button onClick={copyTranscript}
+              className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-50">
+              {copied ? <><CheckCircle2 className="h-3.5 w-3.5" /> Copied!</> : <><Copy className="h-3.5 w-3.5" /> Copy transcript</>}
+            </button>
+            <button onClick={onReset}
+              className="rounded-lg border border-[#E2E2E0] bg-white px-3 py-1.5 text-xs font-medium text-[#64748B] transition hover:bg-[#F4F4F2]">
+              Record shorter note
+            </button>
+          </div>
+        </div>
+        <button onClick={onDismiss} className="shrink-0 text-red-400 hover:text-red-600">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Results card ───────────────────────────────────────────────────────────────
 
 function ResultsCard({
@@ -170,8 +211,11 @@ function ResultsCard({
   onReset:   () => void;
 }) {
   const [transcript, setTranscript] = useState(result.transcript);
-  const [ideas,      setIdeas]      = useState<string[]>(result.analysis.ideas ?? []);
-  const [themes,     setThemes]     = useState<string[]>(result.analysis.themes ?? []);
+  const [ideas,      setIdeas]      = useState<string[]>(Array.isArray(result.analysis.ideas) ? result.analysis.ideas : []);
+  const [themes,     setThemes]     = useState<string[]>(
+    Array.isArray(result.analysis.themes) ? result.analysis.themes
+      : result.analysis.themes ? [result.analysis.themes as unknown as string] : []
+  );
   const [newTheme,   setNewTheme]   = useState("");
   const tc = toneColor(result.analysis.tone);
 
@@ -301,7 +345,9 @@ async function saveNote(
   if (!user) throw new Error("Not authenticated");
 
   const finalTranscript  = edits?.transcript ?? result.transcript;
-  const finalThemes      = edits?.themes     ?? result.analysis.themes ?? [];
+  const rawThemes        = edits?.themes ?? result.analysis.themes ?? [];
+  const safeThemes       = Array.isArray(rawThemes) ? rawThemes
+    : rawThemes ? [rawThemes as string] : [];
   const finalAnalysis    = edits?.ideas
     ? { ...result.analysis, ideas: edits.ideas }
     : result.analysis;
@@ -314,12 +360,28 @@ async function saveNote(
     note_type:        noteType,
     title:            result.analysis.title,
     transcript:       finalTranscript,
-    themes:           finalThemes,
+    themes:           safeThemes,
     raw_ideas:        finalAnalysis,
     duration_seconds: result.durationSec ?? null,
     ideas:            finalIdeas,
     standout_phrases: finalPhrases,
   };
+
+  const validatePayload = (p: typeof payload) => {
+    const issues: string[] = []
+    if (p.themes && !Array.isArray(p.themes)) {
+      issues.push('themes is not array: ' + typeof p.themes)
+    }
+    if (p.raw_ideas && typeof p.raw_ideas !== 'string') {
+      issues.push('raw_ideas is not string: ' + typeof p.raw_ideas)
+    }
+    if (typeof p.duration_seconds !== 'number' && p.duration_seconds !== null) {
+      issues.push('duration_seconds wrong type')
+    }
+    return issues
+  }
+  const issues = validatePayload(payload)
+  if (issues.length > 0) console.error('[saveNote] VALIDATION FAILED:', issues)
 
   console.log('[saveNote] FULL PAYLOAD:', JSON.stringify({
     type:             payload.note_type,
@@ -504,13 +566,17 @@ function VoiceTab() {
       )}
 
       {error && (
-        <div className="mt-4 w-full flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
-          <X className="mt-0.5 h-4 w-4 shrink-0" />
-          {error}
-          <button onClick={() => setError(null)} className="ml-auto shrink-0 hover:opacity-70">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        result
+          ? <SaveFailedBanner error={error} transcript={result.transcript} onDismiss={() => setError(null)} onReset={reset} />
+          : (
+            <div className="mt-4 w-full flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+              <X className="mt-0.5 h-4 w-4 shrink-0" />
+              {error}
+              <button onClick={() => setError(null)} className="ml-auto shrink-0 hover:opacity-70">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )
       )}
 
       {result && phase === "done" && (
@@ -626,9 +692,13 @@ function PhotoTab() {
       )}
 
       {error && (
-        <div className="mt-4 flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
-          <X className="mt-0.5 h-4 w-4 shrink-0" />{error}
-        </div>
+        result
+          ? <SaveFailedBanner error={error} transcript={result.transcript} onDismiss={() => setError(null)} onReset={reset} />
+          : (
+            <div className="mt-4 flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+              <X className="mt-0.5 h-4 w-4 shrink-0" />{error}
+            </div>
+          )
       )}
 
       {result && phase === "done" && (
@@ -778,9 +848,13 @@ function ImportTab() {
       )}
 
       {error && (
-        <div className="flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
-          <X className="mt-0.5 h-4 w-4 shrink-0" />{error}
-        </div>
+        result
+          ? <SaveFailedBanner error={error} transcript={result.transcript} onDismiss={() => setError(null)} onReset={reset} />
+          : (
+            <div className="flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+              <X className="mt-0.5 h-4 w-4 shrink-0" />{error}
+            </div>
+          )
       )}
 
       {result && phase === "done" && (

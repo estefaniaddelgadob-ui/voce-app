@@ -1,9 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 
-function extractJSON(text: string): string {
-  const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  return match ? match[1] : text.trim();
+const extractJSON = (text: string): string => {
+  const stripped = text
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim()
+  return stripped
+}
+
+function toArray(val: unknown): string[] {
+  if (Array.isArray(val)) return val as string[];
+  if (typeof val === "string" && val.trim()) return val.split(/,\s*/);
+  return [];
 }
 
 export async function POST(request: NextRequest) {
@@ -45,6 +55,13 @@ ${transcript}`,
 
     const raw = message.content[0].type === "text" ? message.content[0].text : "{}";
     const analysis = JSON.parse(extractJSON(raw));
+
+    // Normalize to guarantee arrays even if Claude returns strings
+    analysis.ideas   = toArray(analysis.ideas);
+    analysis.themes  = toArray(analysis.themes);
+    analysis.phrases = toArray(analysis.phrases);
+
+    console.log('[analyze] themes type:', typeof analysis.themes, 'is_array:', Array.isArray(analysis.themes), 'value:', analysis.themes);
 
     return NextResponse.json(analysis);
   } catch (err) {
