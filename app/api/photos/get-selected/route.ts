@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { getFreshGoogleToken } from "@/lib/google-auth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
     );
     const { data: profile } = await admin
       .from("persona_profile")
-      .select("google_access_token")
+      .select("google_access_token, google_refresh_token, google_token_expiry")
       .eq("user_id", user.id)
       .single();
 
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Google Photos not connected" }, { status: 400 });
     }
 
-    const token = profile.google_access_token;
+    const token = await getFreshGoogleToken(admin, user.id, profile);
 
     // Check if the user has finished selecting
     const sessionRes = await fetch(

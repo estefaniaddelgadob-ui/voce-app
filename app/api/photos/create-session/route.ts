@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { getFreshGoogleToken } from "@/lib/google-auth";
 
 export async function POST() {
   try {
@@ -21,7 +22,7 @@ export async function POST() {
     );
     const { data: profile } = await admin
       .from("persona_profile")
-      .select("google_access_token")
+      .select("google_access_token, google_refresh_token, google_token_expiry")
       .eq("user_id", user.id)
       .single();
 
@@ -32,10 +33,12 @@ export async function POST() {
       );
     }
 
+    const token = await getFreshGoogleToken(admin, user.id, profile);
+
     const res = await fetch("https://photospicker.googleapis.com/v1/sessions", {
       method:  "POST",
       headers: {
-        "Authorization": `Bearer ${profile.google_access_token}`,
+        "Authorization": `Bearer ${token}`,
         "Content-Type": "application/json",
       },
       body: "{}",
