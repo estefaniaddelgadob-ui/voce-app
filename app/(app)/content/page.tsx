@@ -343,10 +343,15 @@ function PickerMediaPlan({ body, contentType, photos, preloadedPlan }: {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
 
-  // Accept a preloaded plan that arrives after mount (from auto-run on parent)
   useEffect(() => {
     if (preloadedPlan && !plan) setPlan(preloadedPlan);
   }, [preloadedPlan]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    console.log("[photo-state] PickerMediaPlan | photos:", photos.length,
+      "| first baseUrl present:", !!photos[0]?.baseUrl,
+      "| first thumb URL:", photos[0]?.baseUrl ? photoThumbUrl(photos[0].baseUrl, "w150-h150-c") : "EMPTY");
+  }, [photos.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function generatePlan() {
     setLoading(true); setError(null);
@@ -392,8 +397,10 @@ function PickerMediaPlan({ body, contentType, photos, preloadedPlan }: {
             <div key={photo.id} className="aspect-square overflow-hidden rounded-lg bg-[#E2E2E0]">
               {photo.type === "video"
                 ? <div className="flex h-full w-full items-center justify-center text-lg">🎥</div>
-                // eslint-disable-next-line @next/next/no-img-element
-                : <img src={photoThumbUrl(photo.baseUrl, "w150-h150-c")} alt="" className="h-full w-full object-cover" />}
+                : photo.baseUrl
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={photoThumbUrl(photo.baseUrl, "w150-h150-c")} alt="" className="h-full w-full object-cover" />
+                  : <div className="flex h-full w-full items-center justify-center text-lg opacity-40">🖼️</div>}
             </div>
           ))}
         </div>
@@ -415,8 +422,10 @@ function PickerMediaPlan({ body, contentType, photos, preloadedPlan }: {
             <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-[#E2E2E0]">
               {photo.type === "video"
                 ? <div className="flex h-full w-full items-center justify-center text-xl">🎥</div>
-                // eslint-disable-next-line @next/next/no-img-element
-                : <img src={photoThumbUrl(photo.baseUrl, "w128-h128-c")} alt="" className="h-full w-full object-cover" />}
+                : photo.baseUrl
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={photoThumbUrl(photo.baseUrl, "w128-h128-c")} alt="" className="h-full w-full object-cover" />
+                  : <div className="flex h-full w-full items-center justify-center text-lg opacity-40">🖼️</div>}
             </div>
             <div className="min-w-0 flex-1 space-y-1">
               <span className="inline-block rounded-full bg-voce-indigo/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-voce-indigo">
@@ -1192,6 +1201,16 @@ export default function ContentPage() {
     }
   }
 
+  function mergePickerPhotos(
+    prev:     { id: string; baseUrl: string; mimeType: string; type: string }[],
+    incoming: { id: string; baseUrl: string; mimeType: string; type: string }[],
+  ) {
+    const existingIds = new Set(prev.map(p => p.id));
+    const merged = [...prev, ...incoming.filter(p => !existingIds.has(p.id))];
+    console.log("[photo-state] mergePickerPhotos | prev:", prev.length, "| incoming:", incoming.length, "| merged:", merged.length);
+    return merged;
+  }
+
   async function openGooglePhotosPicker() {
     setPickerLoading(true); setPickerError(null);
     try {
@@ -1207,22 +1226,27 @@ export default function ContentPage() {
           try {
             if (popup.closed) {
               clearInterval(interval);
-              // Final check after user closes popup
               const finalRes = await fetch(`/api/photos/get-selected?sessionId=${sessionId}`);
               const { ready, items, error: finalErr } = await finalRes.json();
               if (finalErr) { reject(new Error(finalErr)); return; }
-              if (ready && items?.length > 0) setPickerPhotos(items);
+              if (ready && items?.length > 0) {
+                setPickerPhotos(prev => mergePickerPhotos(prev, items));
+              }
               resolve();
               return;
             }
             const pollRes = await fetch(`/api/photos/get-selected?sessionId=${sessionId}`);
             const { ready, items, error: pollErr } = await pollRes.json();
             if (pollErr) { clearInterval(interval); popup.close(); reject(new Error(pollErr)); return; }
-            if (ready) { clearInterval(interval); popup.close(); setPickerPhotos(items ?? []); resolve(); }
+            if (ready) {
+              clearInterval(interval);
+              popup.close();
+              if (items?.length > 0) setPickerPhotos(prev => mergePickerPhotos(prev, items));
+              resolve();
+            }
           } catch (e) { clearInterval(interval); popup.close(); reject(e); }
         }, pollIntervalMs ?? 2000);
 
-        // 10 minute safety timeout
         setTimeout(() => { clearInterval(interval); popup.close(); reject(new Error("Picker timed out — please try again.")); }, 600_000);
       });
     } catch (err) {
@@ -1405,8 +1429,9 @@ export default function ContentPage() {
         const newIds = savedDrafts.map(d => d.id);
         setNewDraftIds(prev => new Set([...Array.from(prev), ...newIds]));
         setLibraryFilter("generated");
-        setTopic("");
+        // Keep topic so user can iterate on variations without retyping
         reloadDrafts();
+        console.log("[photo-state] after generate | pickerPhotos:", pickerPhotos.length, "| topic preserved:", topic.slice(0, 40));
 
         // Auto-run match-media for new drafts when photos are selected
         if (pickerPhotos.length > 0) {
@@ -1692,22 +1717,33 @@ export default function ContentPage() {
                             <p className="text-[10px] font-bold uppercase tracking-widest text-[#94A3B8]">
                               {pickerPhotos.length} item{pickerPhotos.length !== 1 ? "s" : ""} selected
                             </p>
-                            <button
-                              type="button"
-                              onClick={openGooglePhotosPicker}
-                              disabled={pickerLoading}
-                              className="text-xs text-voce-indigo hover:underline disabled:opacity-60"
-                            >
-                              {pickerLoading ? "Opening…" : "Change selection"}
-                            </button>
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => { setPickerPhotos([]); console.log("[photo-state] cleared selection"); }}
+                                className="text-xs text-[#94A3B8] hover:text-red-400 transition"
+                              >
+                                Clear
+                              </button>
+                              <button
+                                type="button"
+                                onClick={openGooglePhotosPicker}
+                                disabled={pickerLoading}
+                                className="text-xs text-voce-indigo hover:underline disabled:opacity-60"
+                              >
+                                {pickerLoading ? "Opening…" : "Add more"}
+                              </button>
+                            </div>
                           </div>
                           <div className="grid grid-cols-4 gap-1.5">
                             {pickerPhotos.slice(0, 8).map(photo => (
                               <div key={photo.id} className="aspect-square overflow-hidden rounded-lg bg-[#E2E2E0]">
                                 {photo.type === "video"
                                   ? <div className="flex h-full w-full items-center justify-center text-lg">🎥</div>
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  : <img src={photoThumbUrl(photo.baseUrl, "w150-h150-c")} alt="" className="h-full w-full object-cover" />}
+                                  : photo.baseUrl
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    ? <img src={photoThumbUrl(photo.baseUrl, "w150-h150-c")} alt="" className="h-full w-full object-cover" />
+                                    : <div className="flex h-full w-full items-center justify-center text-lg opacity-40">🖼️</div>}
                               </div>
                             ))}
                             {pickerPhotos.length > 8 && (
@@ -1731,8 +1767,11 @@ export default function ContentPage() {
 
                 {/* Generate button */}
                 <button
-                  onClick={handleGenerate}
-                  disabled={!topic.trim() || !audienceId}
+                  onClick={() => {
+                    console.log("[photo-state] generate clicked | topic:", !!topic.trim(), "| audienceId:", !!audienceId, "| pickerPhotos:", pickerPhotos.length, "| pickerLoading:", pickerLoading);
+                    handleGenerate();
+                  }}
+                  disabled={!topic.trim() || !audienceId || pickerLoading}
                   className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-voce-indigo text-sm font-semibold text-white shadow-lg transition hover:opacity-90 disabled:opacity-60"
                 >
                   <Sparkles className="h-5 w-5" /> Generate Content
