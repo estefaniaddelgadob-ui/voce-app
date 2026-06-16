@@ -66,19 +66,23 @@ export async function GET(request: NextRequest) {
       headers: { "Authorization": `Bearer ${token}` },
     }).catch(() => {}); // silent — session may already be expired
 
+    // Google Photos Picker API nests baseUrl/mimeType inside mediaFile, not at item root
+    console.log("[picker/get-selected] first raw item keys:", Object.keys(itemsData.mediaItems?.[0] ?? {}));
+    console.log("[thumbnail-debug] first item mediaFile:", JSON.stringify(itemsData.mediaItems?.[0]?.mediaFile).slice(0, 150));
+
     const items = (itemsData.mediaItems ?? []).map((item: {
       id: string;
-      baseUrl?: string;
-      mimeType?: string;
-    }) => {
-      const mimeType = item.mimeType ?? "image/jpeg";
-      const type     = mimeType.startsWith("video/") ? "video" : "photo";
-      return {
-        id:       item.id,
-        baseUrl:  item.baseUrl ?? "",
-        mimeType,
-        type,
+      type?: string;  // "PHOTO" | "VIDEO"
+      mediaFile?: {
+        baseUrl?: string;
+        mimeType?: string;
       };
+    }) => {
+      const baseUrl  = item.mediaFile?.baseUrl ?? "";
+      const mimeType = item.mediaFile?.mimeType ?? "image/jpeg";
+      const type     = item.type === "VIDEO" || mimeType.startsWith("video/") ? "video" : "photo";
+      console.log("[thumbnail-debug] item id:", item.id.slice(0, 12), "| baseUrl present:", !!baseUrl, "| type:", type);
+      return { id: item.id, baseUrl, mimeType, type };
     });
 
     return NextResponse.json({ ready: true, items });

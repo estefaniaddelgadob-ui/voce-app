@@ -390,24 +390,24 @@ function PickerMediaPlan({ body, contentType, photos, preloadedPlan }: {
         )}
       </div>
 
-      {/* Thumbnail strip — loading spinner while plan arrives (auto-run or preloaded) */}
+      {/* Thumbnail strip — horizontal scroll */}
       {!plan && !loading && (
-        <div className="grid grid-cols-4 gap-1.5">
-          {photos.slice(0, 8).map(photo => (
-            <div key={photo.id} className="aspect-square overflow-hidden rounded-lg bg-[#E2E2E0]">
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {photos.map(photo => (
+            <div key={photo.id} className="h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-[#E2E2E0]">
               {photo.type === "video"
                 ? <div className="flex h-full w-full items-center justify-center text-lg">🎥</div>
                 : photo.baseUrl
                   // eslint-disable-next-line @next/next/no-img-element
-                  ? <img src={photoThumbUrl(photo.baseUrl, "w150-h150-c")} alt="" className="h-full w-full object-cover" />
+                  ? <img src={photoThumbUrl(photo.baseUrl, "w160-h160-c")} alt="" className="h-full w-full object-cover" />
                   : <div className="flex h-full w-full items-center justify-center text-lg opacity-40">🖼️</div>}
             </div>
           ))}
         </div>
       )}
       {!plan && loading && (
-        <div className="flex items-center gap-2 py-2 text-xs text-[#94A3B8]">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Finding your best shots…
+        <div className="flex items-center justify-center py-4">
+          <Loader2 className="h-5 w-5 animate-spin text-voce-indigo/40" />
         </div>
       )}
 
@@ -1735,22 +1735,20 @@ export default function ContentPage() {
                               </button>
                             </div>
                           </div>
-                          <div className="grid grid-cols-4 gap-1.5">
-                            {pickerPhotos.slice(0, 8).map(photo => (
-                              <div key={photo.id} className="aspect-square overflow-hidden rounded-lg bg-[#E2E2E0]">
+                          <p className="text-[10px] text-[#94A3B8] leading-relaxed">
+                            Google Photos won&apos;t highlight your previous picks — just select new photos and we&apos;ll combine them with what you already chose.
+                          </p>
+                          <div className="flex gap-2 overflow-x-auto pb-1">
+                            {pickerPhotos.map(photo => (
+                              <div key={photo.id} className="h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-[#E2E2E0]">
                                 {photo.type === "video"
                                   ? <div className="flex h-full w-full items-center justify-center text-lg">🎥</div>
                                   : photo.baseUrl
                                     // eslint-disable-next-line @next/next/no-img-element
-                                    ? <img src={photoThumbUrl(photo.baseUrl, "w150-h150-c")} alt="" className="h-full w-full object-cover" />
+                                    ? <img src={photoThumbUrl(photo.baseUrl, "w160-h160-c")} alt="" className="h-full w-full object-cover" />
                                     : <div className="flex h-full w-full items-center justify-center text-lg opacity-40">🖼️</div>}
                               </div>
                             ))}
-                            {pickerPhotos.length > 8 && (
-                              <div className="flex aspect-square items-center justify-center rounded-lg bg-[#E2E2E0] text-xs font-medium text-[#64748B]">
-                                +{pickerPhotos.length - 8}
-                              </div>
-                            )}
                           </div>
                         </div>
                       )}
