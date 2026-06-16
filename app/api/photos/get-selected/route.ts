@@ -70,13 +70,16 @@ export async function GET(request: NextRequest) {
       id: string;
       baseUrl?: string;
       mimeType?: string;
-      type?: string;
-    }) => ({
-      id:       item.id,
-      baseUrl:  item.baseUrl  ?? "",
-      mimeType: item.mimeType ?? "image/jpeg",
-      type:     item.type     ?? "photo",
-    }));
+    }) => {
+      const mimeType = item.mimeType ?? "image/jpeg";
+      const type     = mimeType.startsWith("video/") ? "video" : "photo";
+      return {
+        id:       item.id,
+        baseUrl:  item.baseUrl ?? "",
+        mimeType,
+        type,
+      };
+    });
 
     return NextResponse.json({ ready: true, items });
   } catch (err) {

@@ -327,16 +327,26 @@ interface MediaPlanItem {
   editingSuggestion: string;
 }
 
+function photoThumbUrl(baseUrl: string, size: string) {
+  return `/api/photos/image?url=${encodeURIComponent(baseUrl)}&size=${size}`;
+}
+
 // ── Picker media plan ──────────────────────────────────────────────────────────
 
-function PickerMediaPlan({ body, contentType, photos }: {
-  body:        string;
-  contentType: string;
-  photos:      PickerPhoto[];
+function PickerMediaPlan({ body, contentType, photos, preloadedPlan }: {
+  body:           string;
+  contentType:    string;
+  photos:         PickerPhoto[];
+  preloadedPlan?: MediaPlanItem[];
 }) {
-  const [plan,    setPlan]    = useState<MediaPlanItem[] | null>(null);
+  const [plan,    setPlan]    = useState<MediaPlanItem[] | null>(preloadedPlan ?? null);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
+
+  // Accept a preloaded plan that arrives after mount (from auto-run on parent)
+  useEffect(() => {
+    if (preloadedPlan && !plan) setPlan(preloadedPlan);
+  }, [preloadedPlan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function generatePlan() {
     setLoading(true); setError(null);
@@ -375,7 +385,7 @@ function PickerMediaPlan({ body, contentType, photos }: {
         )}
       </div>
 
-      {/* Thumbnail strip before plan loads */}
+      {/* Thumbnail strip — loading spinner while plan arrives (auto-run or preloaded) */}
       {!plan && !loading && (
         <div className="grid grid-cols-4 gap-1.5">
           {photos.slice(0, 8).map(photo => (
@@ -383,9 +393,14 @@ function PickerMediaPlan({ body, contentType, photos }: {
               {photo.type === "video"
                 ? <div className="flex h-full w-full items-center justify-center text-lg">🎥</div>
                 // eslint-disable-next-line @next/next/no-img-element
-                : <img src={`${photo.baseUrl}=w150-h150-c`} alt="" className="h-full w-full object-cover" />}
+                : <img src={photoThumbUrl(photo.baseUrl, "w150-h150-c")} alt="" className="h-full w-full object-cover" />}
             </div>
           ))}
+        </div>
+      )}
+      {!plan && loading && (
+        <div className="flex items-center gap-2 py-2 text-xs text-[#94A3B8]">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Finding your best shots…
         </div>
       )}
 
@@ -401,7 +416,7 @@ function PickerMediaPlan({ body, contentType, photos }: {
               {photo.type === "video"
                 ? <div className="flex h-full w-full items-center justify-center text-xl">🎥</div>
                 // eslint-disable-next-line @next/next/no-img-element
-                : <img src={`${photo.baseUrl}=w128-h128-c`} alt="" className="h-full w-full object-cover" />}
+                : <img src={photoThumbUrl(photo.baseUrl, "w128-h128-c")} alt="" className="h-full w-full object-cover" />}
             </div>
             <div className="min-w-0 flex-1 space-y-1">
               <span className="inline-block rounded-full bg-voce-indigo/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-voce-indigo">
@@ -563,7 +578,7 @@ function MediaSuggestions({ body, mediaType = "both", photosConnected = false, y
 
 // ── Content draft card ─────────────────────────────────────────────────────────
 
-function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, isNew = false, onRead, pickerPhotos = [] }: {
+function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, isNew = false, onRead, pickerPhotos = [], preloadedPlan }: {
   draft: ContentDraft;
   onStatusChange: (id: string, status: string) => void;
   onDelete: (id: string) => void;
@@ -571,6 +586,7 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, is
   isNew?: boolean;
   onRead?: (id: string) => void;
   pickerPhotos?: PickerPhoto[];
+  preloadedPlan?: MediaPlanItem[];
 }) {
   const [expanded,      setExpanded]     = useState(false);
   const [body,          setBody]         = useState(draft.body);
@@ -1088,6 +1104,7 @@ Write a completely different version that addresses these specific issues. ` +
                   body={body}
                   contentType={draft.content_type ?? "instagram_caption"}
                   photos={pickerPhotos}
+                  preloadedPlan={preloadedPlan}
                 />
               ) : (
                 <MediaSuggestions body={body} mediaType={draft.media_type} photosConnected={photosConnected}
@@ -1131,6 +1148,7 @@ export default function ContentPage() {
   const [genSuccessMsg,    setGenSuccessMsg]    = useState<string | null>(null);
   const [photosConnected,  setPhotosConnected]  = useState(false);
   const [newDraftIds,      setNewDraftIds]      = useState<Set<string>>(new Set());
+  const [mediaPlans,       setMediaPlans]       = useState<Map<string, MediaPlanItem[]>>(new Map());
   const libraryRef = useRef<HTMLDivElement>(null);
 
   // Reload drafts whenever the user returns to this browser tab
@@ -1386,11 +1404,37 @@ export default function ContentPage() {
         setDrafts(prev => [...savedDrafts, ...prev]);
         const newIds = savedDrafts.map(d => d.id);
         setNewDraftIds(prev => new Set([...Array.from(prev), ...newIds]));
-        setGenSuccessMsg(`${saved.length} post${saved.length !== 1 ? "s" : ""} generated ✓`);
-        setTimeout(() => setGenSuccessMsg(null), 4000);
-        setLibraryFilter("generated"); // auto-switch so user sees new content immediately
+        setLibraryFilter("generated");
         setTopic("");
         reloadDrafts();
+
+        // Auto-run match-media for new drafts when photos are selected
+        if (pickerPhotos.length > 0) {
+          setGenSuccessMsg(`${saved.length} post${saved.length !== 1 ? "s" : ""} generated — finding your best shots ✨`);
+          const photosSnapshot = [...pickerPhotos];
+          Promise.all(
+            savedDrafts.slice(0, 5).map(async (draft) => {
+              try {
+                console.log("[match-media] auto-run for draft:", draft.id);
+                const res = await fetch("/api/match-media", {
+                  method:  "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body:    JSON.stringify({ caption: draft.body, contentType: draft.content_type ?? "instagram_caption", photos: photosSnapshot }),
+                });
+                const data = await res.json();
+                console.log("[match-media] auto-run result for draft:", draft.id, "| success:", !data.error, "| items:", data.mediaplan?.length ?? 0);
+                if (!data.error && data.mediaplan) {
+                  setMediaPlans(prev => new Map([...prev, [draft.id, data.mediaplan]]));
+                }
+              } catch (err) {
+                console.error("[match-media] auto-run failed for draft:", draft.id, err);
+              }
+            })
+          ).finally(() => setTimeout(() => setGenSuccessMsg(null), 3000));
+        } else {
+          setGenSuccessMsg(`${saved.length} post${saved.length !== 1 ? "s" : ""} generated ✓`);
+          setTimeout(() => setGenSuccessMsg(null), 4000);
+        }
       }
 
       setGenOpen(false);
@@ -1663,7 +1707,7 @@ export default function ContentPage() {
                                 {photo.type === "video"
                                   ? <div className="flex h-full w-full items-center justify-center text-lg">🎥</div>
                                   // eslint-disable-next-line @next/next/no-img-element
-                                  : <img src={`${photo.baseUrl}=w150-h150-c`} alt="" className="h-full w-full object-cover" />}
+                                  : <img src={photoThumbUrl(photo.baseUrl, "w150-h150-c")} alt="" className="h-full w-full object-cover" />}
                               </div>
                             ))}
                             {pickerPhotos.length > 8 && (
@@ -1749,6 +1793,7 @@ export default function ContentPage() {
                 isNew={newDraftIds.has(d.id)}
                 onRead={(id) => setNewDraftIds(prev => { const next = new Set(Array.from(prev)); next.delete(id); return next; })}
                 pickerPhotos={pickerPhotos}
+                preloadedPlan={mediaPlans.get(d.id)}
               />
             ))}
           </div>

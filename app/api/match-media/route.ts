@@ -1,14 +1,21 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 
-const extractJSON = (text: string): string => {
-  const stripped = text
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim()
-  return stripped
-}
+const extractJSON = (text: string): string =>
+  text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+
+const safeParseJSON = (text: string) => {
+  try { return JSON.parse(text); } catch { /* fall through */ }
+  // Attempt to recover truncated mediaplan array
+  const startIdx = text.indexOf('"mediaplan"');
+  if (startIdx !== -1) {
+    const lastObj = text.lastIndexOf('{"mediaIndex"');
+    if (lastObj !== -1) {
+      try { return JSON.parse(text.slice(0, lastObj) + "]}"); } catch { /* fall through */ }
+    }
+  }
+  throw new Error("Could not parse match-media response as JSON");
+};
 
 const SYSTEM_PROMPT = `You are a world-class cinematic content director with 20+ years in filmmaking, advertising and viral social media storytelling.
 
@@ -40,13 +47,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "caption and photos required" }, { status: 400 });
     }
 
-    const photoList = (photos as { id: string; type: string }[])
-      .map((p, i) => `Photo ${i}: type=${p.type}`)
+    const photoList = (photos as { id: string; type: string; mimeType?: string }[])
+      .map((p, i) => `Item ${i}: ${p.type === "video" ? "📹 video" : "📷 photo"} (${p.mimeType ?? "image/jpeg"})`)
       .join("\n");
+
+    console.log("[match-media] caption length:", caption.length, "| photos:", photos.length, "| contentType:", contentType);
 
     const message = await anthropic.messages.create({
       model:      "claude-sonnet-4-6",
-      max_tokens: 2000,
+      max_tokens: 4000,
       system:     SYSTEM_PROMPT,
       messages: [{
         role:    "user",
@@ -75,12 +84,14 @@ Match each photo/video to a moment in the content. Return JSON:
     });
 
     const rawText = message.content[0].type === "text" ? message.content[0].text : "{}";
-    console.log('[match-media] response length:', rawText.length)
-    console.log('[match-media] response tail:', rawText.slice(-300))
-    const parsed = JSON.parse(extractJSON(rawText));
+    console.log("[match-media] response length:", rawText.length, "| tail:", rawText.slice(-200));
+
+    const parsed = safeParseJSON(extractJSON(rawText));
+    console.log("[match-media] parsed plan items:", parsed?.mediaplan?.length ?? 0);
     return NextResponse.json(parsed);
   } catch (err) {
-    console.error("[match-media] error:", err);
-    return NextResponse.json({ error: "Media matching failed" }, { status: 500 });
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[match-media] error:", msg);
+    return NextResponse.json({ error: `Media matching failed: ${msg}` }, { status: 500 });
   }
 }
