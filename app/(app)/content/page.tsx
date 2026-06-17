@@ -298,9 +298,7 @@ function PhotoGrid({ mediaType, yearFrom, yearTo }: {
               className={`relative aspect-square overflow-hidden rounded-lg transition ${
                 isSelected ? "ring-2 ring-voce-indigo ring-offset-1" : "opacity-90 hover:opacity-100"
               }`}>
-              {p.type === "video"
-                ? <div className="flex h-full w-full items-center justify-center bg-[#F4F4F2] text-xl">🎥</div>
-                : <img src={`${p.url}=w200-h200-c`} alt="" className="h-full w-full object-cover" />}
+              <MediaThumbnail src={`${p.url}=w200-h200-c`} isVideo={p.type === "video"} />
               {isSelected && (
                 <div className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-voce-indigo">
                   <CheckCircle2 className="h-3.5 w-3.5 text-white" />
@@ -331,22 +329,49 @@ function photoThumbUrl(baseUrl: string, size: string) {
   return `/api/photos/image?url=${encodeURIComponent(baseUrl)}&size=${size}`;
 }
 
+// ── Shared media thumbnail with video-frame attempt + emoji fallback ───────────
+
+function MediaThumbnail({ src, isVideo }: { src: string | null; isVideo: boolean }) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  if (isVideo) {
+    if (!src || imgFailed) {
+      return <div className="flex h-full w-full items-center justify-center text-xl">🎥</div>;
+    }
+    return (
+      <div className="relative h-full w-full">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt="" className="h-full w-full object-cover" onError={() => setImgFailed(true)} />
+        <div className="pointer-events-none absolute bottom-1 left-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/60">
+          <span className="translate-x-px text-[7px] leading-none text-white">▶</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!src) return <div className="flex h-full w-full items-center justify-center text-lg opacity-40">🖼️</div>;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt="" className="h-full w-full object-cover" />;
+}
+
 // ── Picker media plan ──────────────────────────────────────────────────────────
 
-function PickerMediaPlan({ body, contentType, photos, preloadedPlan }: {
-  body:           string;
-  contentType:    string;
-  photos:         PickerPhoto[];
-  preloadedPlan?: MediaPlanItem[];
+function PickerMediaPlan({ body, contentType, photos, preloadedPlan, autoRunFailed }: {
+  body:            string;
+  contentType:     string;
+  photos:          PickerPhoto[];
+  preloadedPlan?:  MediaPlanItem[];
+  autoRunFailed?:  boolean;
 }) {
   const [plan,    setPlan]    = useState<MediaPlanItem[] | null>(preloadedPlan ?? null);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
 
-  // Update plan whenever parent sends a new preloadedPlan (e.g. after caption regeneration)
+  // Update plan whenever parent sends a new preloadedPlan (e.g. after caption regeneration or auto-run).
+  // setPlan is a stable state setter (React guarantee), so listing it here is safe — no extra re-runs.
   useEffect(() => {
     if (preloadedPlan) setPlan(preloadedPlan);
-  }, [preloadedPlan]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [preloadedPlan, setPlan]);
 
   useEffect(() => {
     photos.forEach((p, i) =>
@@ -397,17 +422,22 @@ function PickerMediaPlan({ body, contentType, photos, preloadedPlan }: {
         )}
       </div>
 
+      {/* Auto-run failure notice */}
+      {!plan && !loading && autoRunFailed && (
+        <p className="text-[11px] text-amber-500">
+          ⚠ Auto-match didn&apos;t complete — tap &ldquo;Match media&rdquo; to try manually
+        </p>
+      )}
+
       {/* Thumbnail strip — horizontal scroll */}
       {!plan && !loading && (
         <div className="flex gap-2 overflow-x-auto pb-1">
           {photos.map(photo => (
             <div key={photo.id} className="h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-[#E2E2E0]">
-              {photo.type === "video"
-                ? <div className="flex h-full w-full items-center justify-center text-lg">🎥</div>
-                : photo.baseUrl
-                  // eslint-disable-next-line @next/next/no-img-element
-                  ? <img src={photoThumbUrl(photo.baseUrl, "w160-h160-c")} alt="" className="h-full w-full object-cover" />
-                  : <div className="flex h-full w-full items-center justify-center text-lg opacity-40">🖼️</div>}
+              <MediaThumbnail
+                src={photo.baseUrl ? photoThumbUrl(photo.baseUrl, "w160-h160-c") : null}
+                isVideo={photo.type === "video"}
+              />
             </div>
           ))}
         </div>
@@ -427,12 +457,10 @@ function PickerMediaPlan({ body, contentType, photos, preloadedPlan }: {
         return (
           <div key={i} className="flex gap-3 rounded-xl bg-white p-3">
             <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-[#E2E2E0]">
-              {photo.type === "video"
-                ? <div className="flex h-full w-full items-center justify-center text-xl">🎥</div>
-                : photo.baseUrl
-                  // eslint-disable-next-line @next/next/no-img-element
-                  ? <img src={photoThumbUrl(photo.baseUrl, "w128-h128-c")} alt="" className="h-full w-full object-cover" />
-                  : <div className="flex h-full w-full items-center justify-center text-lg opacity-40">🖼️</div>}
+              <MediaThumbnail
+                src={photo.baseUrl ? photoThumbUrl(photo.baseUrl, "w128-h128-c") : null}
+                isVideo={photo.type === "video"}
+              />
             </div>
             <div className="min-w-0 flex-1 space-y-1">
               <span className="inline-block rounded-full bg-voce-indigo/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-voce-indigo">
@@ -594,7 +622,7 @@ function MediaSuggestions({ body, mediaType = "both", photosConnected = false, y
 
 // ── Content draft card ─────────────────────────────────────────────────────────
 
-function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, isNew = false, onRead, pickerPhotos = [], preloadedPlan, onMediaPlanUpdate }: {
+function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, isNew = false, onRead, pickerPhotos = [], preloadedPlan, autoRunFailed, onMediaPlanUpdate }: {
   draft: ContentDraft;
   onStatusChange: (id: string, status: string) => void;
   onDelete: (id: string) => void;
@@ -603,6 +631,7 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, is
   onRead?: (id: string) => void;
   pickerPhotos?: PickerPhoto[];
   preloadedPlan?: MediaPlanItem[];
+  autoRunFailed?: boolean;
   onMediaPlanUpdate?: (id: string, plan: MediaPlanItem[]) => void;
 }) {
   const [expanded,      setExpanded]     = useState(false);
@@ -1138,6 +1167,7 @@ Write a completely different version that addresses these specific issues. ` +
                   contentType={draft.content_type ?? "instagram_caption"}
                   photos={pickerPhotos}
                   preloadedPlan={preloadedPlan}
+                  autoRunFailed={autoRunFailed}
                 />
               ) : (
                 <MediaSuggestions body={body} mediaType={draft.media_type} photosConnected={photosConnected}
@@ -1181,7 +1211,8 @@ export default function ContentPage() {
   const [genSuccessMsg,    setGenSuccessMsg]    = useState<string | null>(null);
   const [photosConnected,  setPhotosConnected]  = useState(false);
   const [newDraftIds,      setNewDraftIds]      = useState<Set<string>>(new Set());
-  const [mediaPlans,       setMediaPlans]       = useState<Map<string, MediaPlanItem[]>>(new Map());
+  const [mediaPlans,          setMediaPlans]          = useState<Map<string, MediaPlanItem[]>>(new Map());
+  const [failedAutoMatchIds,  setFailedAutoMatchIds]  = useState<Set<string>>(new Set());
   const libraryRef = useRef<HTMLDivElement>(null);
 
   // Reload drafts whenever the user returns to this browser tab
@@ -1475,9 +1506,12 @@ export default function ContentPage() {
                 console.log("[match-media] auto-run result for draft:", draft.id, "| success:", !data.error, "| items:", data.mediaplan?.length ?? 0);
                 if (!data.error && data.mediaplan) {
                   setMediaPlans(prev => new Map([...prev, [draft.id, data.mediaplan]]));
+                } else {
+                  setFailedAutoMatchIds(prev => new Set([...prev, draft.id]));
                 }
               } catch (err) {
                 console.error("[match-media] auto-run failed for draft:", draft.id, err);
+                setFailedAutoMatchIds(prev => new Set([...prev, draft.id]));
               }
             })
           ).finally(() => setTimeout(() => setGenSuccessMsg(null), 3000));
@@ -1770,12 +1804,10 @@ export default function ContentPage() {
                           <div className="flex gap-2 overflow-x-auto pb-1">
                             {pickerPhotos.map(photo => (
                               <div key={photo.id} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-[#E2E2E0]">
-                                {photo.type === "video"
-                                  ? <div className="flex h-full w-full items-center justify-center text-lg">🎥</div>
-                                  : photo.baseUrl
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    ? <img src={photoThumbUrl(photo.baseUrl, "w160-h160-c")} alt="" className="h-full w-full object-cover" />
-                                    : <div className="flex h-full w-full items-center justify-center text-lg opacity-40">🖼️</div>}
+                                <MediaThumbnail
+                                  src={photo.baseUrl ? photoThumbUrl(photo.baseUrl, "w160-h160-c") : null}
+                                  isVideo={photo.type === "video"}
+                                />
                                 <button
                                   type="button"
                                   onClick={() => setPickerPhotos(prev => prev.filter(p => p.id !== photo.id))}
@@ -1868,6 +1900,7 @@ export default function ContentPage() {
                 onRead={(id) => setNewDraftIds(prev => { const next = new Set(Array.from(prev)); next.delete(id); return next; })}
                 pickerPhotos={pickerPhotos}
                 preloadedPlan={mediaPlans.get(d.id)}
+                autoRunFailed={failedAutoMatchIds.has(d.id)}
                 onMediaPlanUpdate={handleMediaPlanUpdate}
               />
             ))}
