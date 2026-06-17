@@ -349,6 +349,12 @@ function PickerMediaPlan({ body, contentType, photos, preloadedPlan }: {
   }, [preloadedPlan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    photos.forEach((p, i) =>
+      console.log(`[client-video-debug] PickerMediaPlan photos[${i}] id:${p.id.slice(0,10)} type:${JSON.stringify(p.type)} mimeType:${p.mimeType}`)
+    );
+  }, [photos]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     console.log("[photo-state] PickerMediaPlan | photos:", photos.length,
       "| first baseUrl present:", !!photos[0]?.baseUrl,
       "| first thumb URL:", photos[0]?.baseUrl ? photoThumbUrl(photos[0].baseUrl, "w150-h150-c") : "EMPTY");
@@ -1226,6 +1232,7 @@ export default function ContentPage() {
     const existingIds = new Set(prev.map(p => p.id));
     const merged = [...prev, ...incoming.filter(p => !existingIds.has(p.id))];
     console.log("[photo-state] mergePickerPhotos | prev:", prev.length, "| incoming:", incoming.length, "| merged:", merged.length);
+    incoming.forEach((p, i) => console.log(`[client-video-debug] incoming[${i}] id:${p.id.slice(0,10)} type:${JSON.stringify(p.type)} mimeType:${p.mimeType} baseUrl:${!!p.baseUrl}`));
     return merged;
   }
 
