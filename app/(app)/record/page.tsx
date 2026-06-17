@@ -354,14 +354,14 @@ async function saveNote(
   const finalIdeas       = (edits?.ideas ?? result.analysis.ideas ?? []).join("\n");
   const finalPhrases     = (result.analysis.phrases ?? []).join("\n");
 
-  // note_type matches migration 002 column name; raw_ideas is jsonb — pass object not string
+  // `type` is the live column name; raw_ideas is TEXT — must be JSON string, not object
   const payload = {
     user_id:          user.id,
-    note_type:        noteType,
+    type:             noteType,
     title:            result.analysis.title,
     transcript:       finalTranscript,
     themes:           safeThemes,
-    raw_ideas:        finalAnalysis,
+    raw_ideas:        JSON.stringify(finalAnalysis),
     duration_seconds: result.durationSec ?? null,
     ideas:            finalIdeas,
     standout_phrases: finalPhrases,
@@ -384,7 +384,7 @@ async function saveNote(
   if (issues.length > 0) console.error('[saveNote] VALIDATION FAILED:', issues)
 
   console.log('[saveNote] FULL PAYLOAD:', JSON.stringify({
-    type:             payload.note_type,
+    type:             payload.type,
     title_len:        payload.title?.length,
     transcript_len:   payload.transcript?.length,
     raw_ideas_type:   typeof payload.raw_ideas,

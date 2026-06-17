@@ -67,22 +67,25 @@ export async function GET(request: NextRequest) {
     }).catch(() => {}); // silent — session may already be expired
 
     // Google Photos Picker API nests baseUrl/mimeType inside mediaFile, not at item root
-    console.log("[picker/get-selected] first raw item keys:", Object.keys(itemsData.mediaItems?.[0] ?? {}));
-    console.log("[thumbnail-debug] first item mediaFile:", JSON.stringify(itemsData.mediaItems?.[0]?.mediaFile).slice(0, 150));
+    console.log("[picker/get-selected] first raw item:", JSON.stringify(itemsData.mediaItems?.[0]).slice(0, 300));
 
     const items = (itemsData.mediaItems ?? []).map((item: {
       id: string;
-      type?: string;  // "PHOTO" | "VIDEO"
+      type?: string;  // "PHOTO" | "VIDEO" (may also be lowercase or absent)
       mediaFile?: {
         baseUrl?: string;
         mimeType?: string;
       };
     }) => {
       const baseUrl  = item.mediaFile?.baseUrl ?? "";
-      const mimeType = item.mediaFile?.mimeType ?? "image/jpeg";
-      const type     = item.type === "VIDEO" || mimeType.startsWith("video/") ? "video" : "photo";
-      console.log("[thumbnail-debug] item id:", item.id.slice(0, 12), "| baseUrl present:", !!baseUrl, "| type:", type);
-      return { id: item.id, baseUrl, mimeType, type };
+      const mimeType = item.mediaFile?.mimeType ?? "";
+      // Derive type from both the enum field AND mimeType for robustness
+      const rawType  = (item.type ?? "").toUpperCase();
+      const isVideo  = rawType === "VIDEO" || mimeType.toLowerCase().startsWith("video/");
+      const type     = isVideo ? "video" : "photo";
+      const mime     = mimeType || (isVideo ? "video/mp4" : "image/jpeg");
+      console.log("[thumbnail-debug] id:", item.id.slice(0, 12), "| rawType:", item.type, "| mimeType:", mimeType, "| resolved:", type, "| baseUrl:", !!baseUrl);
+      return { id: item.id, baseUrl, mimeType: mime, type };
     });
 
     return NextResponse.json({ ready: true, items });

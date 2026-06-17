@@ -244,12 +244,16 @@ Write a ${(audience.primary_platform || "social media")} post. Return ONLY valid
       firstNotePreview: notes[0]?.transcript?.slice(0, 100),
     });
 
-    const userMessage = `Creator persona:
+    const userMessage = `CONTENT REQUEST — THIS IS THE PRIMARY SUBJECT:
+"${topic}"
+Write specifically about this. Do not substitute or blend in unrelated themes from voice notes unless they directly relate to this exact topic. Voice notes inform HOW to write (voice, tone, rhythm) — not WHAT to write about.
+
+Creator persona:
 ${personaBlock}
 ${samplesBlock}${refsBlock}
 
 VOICE NOTES AND THOUGHTS FROM THIS CREATOR
-(study these carefully — this is how they actually think and speak):
+(use for voice, tone, vocabulary, and authentic phrasing — only draw on specific stories/memories if they directly relate to the topic above):
 ${notesBlock}
 
 Target audience:
