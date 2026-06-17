@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   Sparkles, Loader2, RefreshCw,
   ChevronDown, ChevronRight, Plus, AlertCircle,
-  Camera, Edit2, CheckCircle2, Copy, Trash2,
+  Camera, Edit2, CheckCircle2, Copy, Trash2, X as XIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 
@@ -343,8 +343,9 @@ function PickerMediaPlan({ body, contentType, photos, preloadedPlan }: {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
 
+  // Update plan whenever parent sends a new preloadedPlan (e.g. after caption regeneration)
   useEffect(() => {
-    if (preloadedPlan && !plan) setPlan(preloadedPlan);
+    if (preloadedPlan) setPlan(preloadedPlan);
   }, [preloadedPlan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -587,7 +588,7 @@ function MediaSuggestions({ body, mediaType = "both", photosConnected = false, y
 
 // ── Content draft card ─────────────────────────────────────────────────────────
 
-function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, isNew = false, onRead, pickerPhotos = [], preloadedPlan }: {
+function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, isNew = false, onRead, pickerPhotos = [], preloadedPlan, onMediaPlanUpdate }: {
   draft: ContentDraft;
   onStatusChange: (id: string, status: string) => void;
   onDelete: (id: string) => void;
@@ -596,6 +597,7 @@ function ContentDraftCard({ draft, onStatusChange, onDelete, photosConnected, is
   onRead?: (id: string) => void;
   pickerPhotos?: PickerPhoto[];
   preloadedPlan?: MediaPlanItem[];
+  onMediaPlanUpdate?: (id: string, plan: MediaPlanItem[]) => void;
 }) {
   const [expanded,      setExpanded]     = useState(false);
   const [body,          setBody]         = useState(draft.body);
@@ -802,6 +804,22 @@ Write a completely different version that addresses these specific issues. ` +
       setDraftBody(isReelRegen ? null : (variation.body ? cleanContent(variation.body) : null));
       setDraftCta(isReelRegen  ? null : (variation.cta  ? cleanContent(variation.cta)  : null));
       setFeedback([]);
+
+      // Fire-and-forget: re-run match-media against the new caption if photos are selected
+      if (pickerPhotos.length > 0 && onMediaPlanUpdate) {
+        const capturedBody  = newBody;
+        const capturedPhotos = [...pickerPhotos];
+        fetch("/api/match-media", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ caption: capturedBody, contentType: draftContentType, photos: capturedPhotos }),
+        }).then(r => r.json()).then(d => {
+          if (!d.error && d.mediaplan) {
+            onMediaPlanUpdate(draft.id, d.mediaplan);
+            console.log("[regenerate] auto match-media updated plan for draft:", draft.id, "| items:", d.mediaplan.length);
+          }
+        }).catch(err => console.warn("[regenerate] auto match-media failed:", err));
+      }
 
       const { error: updateErr } = await supabase.from("content_drafts").update({
         body:           newBody,
@@ -1483,6 +1501,10 @@ export default function ContentPage() {
     setDrafts(prev => prev.filter(d => d.id !== id));
   }
 
+  function handleMediaPlanUpdate(id: string, plan: MediaPlanItem[]) {
+    setMediaPlans(prev => new Map([...prev, [id, plan]]));
+  }
+
   const filteredDrafts = drafts.filter(d => d.status === libraryFilter);
 
   const selectedAudience = audiences.find(a => a.id === audienceId);
@@ -1731,22 +1753,30 @@ export default function ContentPage() {
                                 disabled={pickerLoading}
                                 className="text-xs text-voce-indigo hover:underline disabled:opacity-60"
                               >
-                                {pickerLoading ? "Opening…" : "Add more"}
+                                {pickerLoading ? "Opening…" : "Edit selection"}
                               </button>
                             </div>
                           </div>
                           <p className="text-[10px] text-[#94A3B8] leading-relaxed">
-                            Google Photos won&apos;t highlight your previous picks — just select new photos and we&apos;ll combine them with what you already chose.
+                            Google Photos won&apos;t show your previous picks highlighted — select photos to add, or just confirm to keep your current selection.
                           </p>
                           <div className="flex gap-2 overflow-x-auto pb-1">
                             {pickerPhotos.map(photo => (
-                              <div key={photo.id} className="h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-[#E2E2E0]">
+                              <div key={photo.id} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-[#E2E2E0]">
                                 {photo.type === "video"
                                   ? <div className="flex h-full w-full items-center justify-center text-lg">🎥</div>
                                   : photo.baseUrl
                                     // eslint-disable-next-line @next/next/no-img-element
                                     ? <img src={photoThumbUrl(photo.baseUrl, "w160-h160-c")} alt="" className="h-full w-full object-cover" />
                                     : <div className="flex h-full w-full items-center justify-center text-lg opacity-40">🖼️</div>}
+                                <button
+                                  type="button"
+                                  onClick={() => setPickerPhotos(prev => prev.filter(p => p.id !== photo.id))}
+                                  className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
+                                  aria-label="Remove photo"
+                                >
+                                  <XIcon className="h-3 w-3" />
+                                </button>
                               </div>
                             ))}
                           </div>
@@ -1831,6 +1861,7 @@ export default function ContentPage() {
                 onRead={(id) => setNewDraftIds(prev => { const next = new Set(Array.from(prev)); next.delete(id); return next; })}
                 pickerPhotos={pickerPhotos}
                 preloadedPlan={mediaPlans.get(d.id)}
+                onMediaPlanUpdate={handleMediaPlanUpdate}
               />
             ))}
           </div>

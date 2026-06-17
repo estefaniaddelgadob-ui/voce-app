@@ -27,6 +27,11 @@ Your task:
 - Explain WHY this visual works — reference what you actually see in the photo
 - Think like a creative director: which photo stops the scroll? Which creates curiosity? Which delivers the emotional payoff?
 
+IMPORTANT MATCHING RULES:
+- Evaluate each photo's actual visual content against the specific meaning of each sentence or moment in the text. Do not default to assigning photos in their original upload order.
+- If this matching call is for one of several related posts being generated in the same batch, actively vary which photos you select and how you order them across posts — avoid producing near-identical photo selections for different captions unless the visual content truly only suits one specific photo.
+- Briefly justify, for each chosen photo, why it fits THIS specific sentence better than other available options.
+
 Return ONLY valid JSON — no markdown, no explanation.`;
 
 async function fetchImageBase64(url: string, token: string): Promise<{ data: string; mediaType: string } | null> {
